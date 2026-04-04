@@ -28,11 +28,9 @@
   <title>MediSchrank</title>
 
   <!--
-    Barcode: html5-qrcode (bündelt ZXing UMD intern) → bewährt auf iOS/Safari
-    OCR:     Tesseract.js für MHD-Erkennung per Foto
-    Beide als klassische <script> Tags → kein dynamic import, kein ESM-Problem
+    Barcode: html5-qrcode (ZXing UMD intern) → bewährt auf iOS/Safari
+    OCR + Produktdaten: Claude API → Foto der Verpackung → alle Felder auf einmal
   -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin="anonymous"></script>
 
   <style>
@@ -688,34 +686,64 @@
   </div>
   <div class="mb">
 
-   <!-- Barcode -->
-   <div class="fg">
-    <label>Barcode (EAN)</label>
-    <div class="r2">
-     <input type="text" id="f-barcode" placeholder="EAN-13 / Barcode" oninput="App.onBcInput()" />
-     <button class="btn sm" id="scan-btn" onclick="App.startScan()" style="flex:none;padding:10px 14px" title="Barcode per Kamera scannen">📷</button>
+   <!-- ── Primär: Verpackung fotografieren ───────────────── -->
+   <div style="margin-bottom:14px">
+    <button class="btn" onclick="App.startPhotoScan()"
+      style="width:100%;padding:14px;font-size:.88rem;border-radius:var(--r);letter-spacing:.01em">
+      📦 Verpackung fotografieren
+    </button>
+    <div style="font-size:.63rem;color:var(--text3);text-align:center;margin-top:6px;line-height:1.5">
+      KI liest Name, PZN, MHD und Menge automatisch aus
     </div>
-    <!-- Verstecktes File-Input — öffnet Kamera auf iOS wie beim OCR -->
-    <input type="file" id="scan-file" accept="image/*" capture="environment" style="display:none" onchange="App.runScan(event)" />
+    <input type="file" id="photo-file" accept="image/*" capture="environment"
+      style="display:none" onchange="App.runPhotoScan(event)" />
    </div>
 
-   <!-- Scanner-Fortschritt (gleiche Struktur wie OCR) -->
-   <div id="scan-prog" style="display:none;padding:8px 11px;background:rgba(94,184,245,.07);border:1px solid rgba(94,184,245,.18);border-radius:var(--rs);font-size:.69rem;color:var(--acc);margin-bottom:10px;">
+   <!-- KI-Analyse Fortschritt -->
+   <div id="ai-prog" style="display:none;padding:10px 13px;background:rgba(94,184,245,.07);border:1px solid rgba(94,184,245,.2);border-radius:var(--r);margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+     <span class="spin"></span>
+     <span id="ai-msg" style="font-size:.72rem;color:var(--acc)">Verpackung wird analysiert…</span>
+    </div>
+    <div style="background:var(--surf2);border-radius:4px;height:3px">
+     <div id="ai-bar" style="height:3px;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:4px;width:0;transition:width .4s ease"></div>
+    </div>
+   </div>
+
+   <!-- Trennlinie -->
+   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="flex:1;height:1px;background:var(--bd)"></div>
+    <span style="font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">oder manuell</span>
+    <div style="flex:1;height:1px;background:var(--bd)"></div>
+   </div>
+
+   <!-- Barcode / EAN / PZN -->
+   <div class="fg">
+    <label>EAN / PZN / Barcode</label>
+    <div class="r2">
+     <input type="text" id="f-barcode" placeholder="Barcode-Nummer oder PZN" oninput="App.onBcInput()" />
+     <button class="btn sm" id="scan-btn" onclick="App.startScan()"
+       style="flex:none;padding:10px 14px" title="Barcode scannen">📷</button>
+    </div>
+    <input type="file" id="scan-file" accept="image/*" capture="environment"
+      style="display:none" onchange="App.runScan(event)" />
+   </div>
+
+   <!-- Scan-Fortschritt -->
+   <div id="scan-prog" style="display:none;padding:8px 11px;background:rgba(94,184,245,.07);border:1px solid rgba(94,184,245,.18);border-radius:var(--rs);font-size:.69rem;color:var(--acc);margin-bottom:10px">
     <span id="scan-prog-msg">📷 Barcode wird erkannt…</span>
-    <div style="background:var(--surf2);border-radius:4px;height:4px;margin-top:6px"><div id="scan-prog-bar" style="height:4px;background:var(--acc);border-radius:4px;width:0;transition:width .3s"></div></div>
+    <div style="background:var(--surf2);border-radius:4px;height:4px;margin-top:6px">
+     <div id="scan-prog-bar" style="height:4px;background:var(--acc);border-radius:4px;width:0;transition:width .3s"></div>
+    </div>
    </div>
 
-   <!-- Scanner -->
-   <div id="scan-box" style="display:none">
-    <video id="scan-video" playsinline muted autoplay></video>
-    <div class="sfo"><div class="sfr"><div class="sln"></div></div></div>
-   </div>
-   <div class="shint" id="shint" style="display:none">Barcode in den Rahmen halten</div>
+   <!-- Status / Ergebnis-Meldung -->
    <div class="sr-msg" id="sr-msg"></div>
 
-   <!-- Lookup -->
-   <button class="btn sec sm" id="lk-btn" onclick="App.lookup()" style="display:none;width:100%;margin-bottom:12px">
-    🔍 Produktinfo laden (OpenFoodFacts)
+   <!-- Lookup Button (erscheint nach Barcode-Erkennung) -->
+   <button class="btn sec sm" id="lk-btn" onclick="App.lookup()"
+     style="display:none;width:100%;margin-bottom:12px">
+    🔍 Produktdaten laden (EAN/PZN-Suche)
    </button>
 
    <!-- Name -->
@@ -731,25 +759,19 @@
     <datalist id="loc-dl"></datalist>
    </div>
 
-   <!-- MHD + OCR -->
+   <!-- MHD -->
    <div class="fg">
     <label>Mindesthaltbarkeitsdatum *</label>
-    <div class="r2">
-     <input type="date" id="f-mhd" />
-     <button class="btn sec sm" onclick="App.startOCR()" style="flex:none;padding:10px 14px" title="MHD per Foto erkennen">📸 OCR</button>
-    </div>
-    <input type="file" id="ocr-file" accept="image/*" capture="environment" style="display:none" onchange="App.runOCR(event)" />
+    <input type="date" id="f-mhd" />
    </div>
-
-   <!-- OCR Progress -->
-   <div id="ocr-prog"><span id="ocr-msg">📸 OCR läuft…</span><div id="ocr-bt"><div id="ocr-bf"></div></div></div>
 
    <!-- Menge / Hersteller -->
    <div class="r2">
     <div class="fg" style="margin-bottom:0"><label>Menge</label><input type="text" id="f-qty" placeholder="z.B. 20 Stk." /></div>
     <div class="fg" style="margin-bottom:0"><label>Hersteller</label><input type="text" id="f-brand" placeholder="optional" /></div>
    </div>
-   <div class="fg" style="margin-top:12px"><label>Notizen / Dosierung</label><input type="text" id="f-notes" placeholder="Hinweise…" /></div>
+   <div class="fg" style="margin-top:12px"><label>PZN</label><input type="text" id="f-pzn" placeholder="Pharmazentralnummer (optional)" /></div>
+   <div class="fg"><label>Notizen / Dosierung</label><input type="text" id="f-notes" placeholder="Hinweise…" /></div>
 
    <div class="fa">
     <button class="btn sec" onclick="App.closeModal()">Abbrechen</button>
@@ -1009,8 +1031,8 @@ const App=(()=>{
   function openEdit(id){
     editId=id;const m=meds.find(x=>x.id===id);if(!m)return;
     document.getElementById('mttl').textContent='✏️ Medikament bearbeiten';
-    ['barcode','name','loc','mhd','qty','brand','notes'].forEach(f=>{
-      document.getElementById(`f-${f}`).value=m[f==='loc'?'location':f]||'';
+    ['barcode','pzn','name','loc','mhd','qty','brand','notes'].forEach(f=>{
+      const el=document.getElementById(`f-${f}`); if(el) el.value=m[f==='loc'?'location':f]||'';
     });
     document.getElementById('lk-btn').style.display=m.barcode?'block':'none';
     document.getElementById('ov-add').classList.add('open');
@@ -1018,10 +1040,13 @@ const App=(()=>{
   function closeModal(){stopScan();document.getElementById('ov-add').classList.remove('open');clearForm();editId=null;}
   function ovClick(e){if(e.target===e.currentTarget)closeModal();}
   function clearForm(){
-    ['barcode','name','loc','mhd','qty','brand','notes'].forEach(f=>document.getElementById(`f-${f}`).value='');
-    hideSR(); document.getElementById('lk-btn').style.display='none';
-    document.getElementById('ocr-prog').style.display='none';
+    ['barcode','name','loc','mhd','qty','brand','pzn','notes'].forEach(f=>{
+      const el=document.getElementById(`f-${f}`); if(el) el.value='';
+    });
+    hideSR();
+    document.getElementById('lk-btn').style.display='none';
     document.getElementById('scan-prog').style.display='none';
+    const ap=document.getElementById('ai-prog'); if(ap) ap.style.display='none';
     stopScan();
   }
 
@@ -1035,6 +1060,7 @@ const App=(()=>{
     const entry={
       id:editId||String(now), name,
       barcode:document.getElementById('f-barcode').value.trim(),
+      pzn:document.getElementById('f-pzn').value.trim(),
       location:document.getElementById('f-loc').value.trim(),
       mhd,
       qty:document.getElementById('f-qty').value.trim(),
@@ -1071,7 +1097,7 @@ const App=(()=>{
      3. Fallback: BarcodeDetector API (Chrome / Safari Desktop 17.4+)
      4. Rotations-Fallback 90°/270°/180°
      
-     Html5Qrcode wird über <script> im <head> geladen → synchron verfügbar,
+     Html5Qrcode wird über script-Tag im head geladen → synchron verfügbar,
      kein dynamic import, kein CORS-Problem in Safari.
   ══════════════════════════════════════════════════════════ */
 
@@ -1197,93 +1223,206 @@ const App=(()=>{
   }
 
   /* ══ OPENFOODFACTS ════════════════════════════════════════ */
-  async function lookup(){
-    const bc=document.getElementById('f-barcode').value.trim();if(!bc)return;
-    const btn=document.getElementById('lk-btn');
-    btn.innerHTML='<span class="spin"></span>Suche läuft…';btn.disabled=true;
-    try{
-      const r=await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(bc)}.json`,
-        {signal:AbortSignal.timeout(8000)});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const data=await r.json();
-      if(data.status!==1||!data.product){showSR('Nicht in OpenFoodFacts — manuell eingeben','info');toast('Nicht gefunden','inf');return;}
-      const p=data.product;
-      const name=p.product_name_de||p.product_name||p.generic_name||'';
-      const brand=p.brands||'';const qty=p.quantity||'';
-      if(name&&!document.getElementById('f-name').value.trim())  document.getElementById('f-name').value=name;
-      if(brand&&!document.getElementById('f-brand').value.trim())document.getElementById('f-brand').value=brand;
-      if(qty&&!document.getElementById('f-qty').value.trim())    document.getElementById('f-qty').value=qty;
-      showSR(`✓ ${name||'Produkt'}${brand?' · '+brand:''}${qty?' · '+qty:''}` ,'ok');
-      toast('Produktinfo geladen ✓','ok');
-    }catch(err){
-      if(!navigator.onLine)showSR('Offline – manuell eingeben','info');
-      else showSR('Fehler: '+err.message,'err');
-    }finally{
-      btn.innerHTML='🔍 Produktinfo laden (OpenFoodFacts)';btn.disabled=false;
+  /* ══ VERPACKUNGSFOTO → CLAUDE API ════════════════════════
+     Primärer Workflow: Ein Foto der Verpackung →
+     Claude liest Name, Hersteller, PZN, MHD, Menge aus.
+     Kein Tesseract, kein separater OCR-Schritt nötig.
+  ══════════════════════════════════════════════════════════ */
+
+  function startPhotoScan() {
+    document.getElementById('photo-file').click();
+  }
+
+  async function runPhotoScan(event) {
+    const file = event.target.files?.[0]; if (!file) return;
+    event.target.value = '';
+
+    const prog = document.getElementById('ai-prog');
+    const msg  = document.getElementById('ai-msg');
+    const bar  = document.getElementById('ai-bar');
+    prog.style.display = 'block';
+    msg.textContent = '📦 Verpackung wird analysiert…';
+    bar.style.width = '15%';
+
+    try {
+      // Bild → base64
+      const b64 = await fileToBase64(file);
+      bar.style.width = '35%';
+      msg.textContent = '🤖 KI liest Medikamentendaten…';
+
+      const prompt = `Du analysierst ein Foto einer Medikamentenverpackung.
+Extrahiere alle verfügbaren Informationen und antworte NUR mit einem JSON-Objekt (kein Markdown, keine Erklärung):
+{
+  "name": "vollständiger Produktname mit Stärke, z.B. Ibuprofen 400mg",
+  "brand": "Hersteller",
+  "pzn": "Pharmazentralnummer (nur Ziffern, ohne PZN-Präfix)",
+  "ean": "EAN-13 Barcode falls sichtbar",
+  "mhd": "Ablaufdatum im Format YYYY-MM-DD, falls kein Tag angegeben dann letzter Tag des Monats",
+  "qty": "Packungsgröße z.B. 20 Tabletten, 100ml",
+  "notes": "Wirkstoff, Dosierungshinweise falls sichtbar"
+}
+Fehlende Felder als leeren String "" angeben. Nur JSON, nichts anderes.`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 400,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: b64 } },
+              { type: 'text', text: prompt }
+            ]
+          }]
+        })
+      });
+
+      bar.style.width = '80%';
+
+      if (!response.ok) throw new Error('API ' + response.status);
+      const data = await response.json();
+      const raw  = data.content?.[0]?.text || '';
+
+      // JSON aus Antwort extrahieren
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('Kein JSON in Antwort');
+      const info = JSON.parse(jsonMatch[0]);
+
+      bar.style.width = '100%';
+
+      // Felder befüllen (nur leere Felder überschreiben)
+      const fill = (id, val) => {
+        if (val && val.trim() && !document.getElementById(id).value.trim())
+          document.getElementById(id).value = val.trim();
+      };
+      fill('f-name',    info.name);
+      fill('f-brand',   info.brand);
+      fill('f-pzn',     info.pzn);
+      fill('f-barcode', info.ean || info.pzn);
+      fill('f-qty',     info.qty);
+      fill('f-notes',   info.notes);
+
+      // MHD: Datum parsen und ins date-Input schreiben
+      if (info.mhd && !document.getElementById('f-mhd').value) {
+        const d = new Date(info.mhd);
+        if (!isNaN(d)) document.getElementById('f-mhd').value = info.mhd;
+      }
+
+      // Zusammenfassung anzeigen
+      const found = [info.name, info.brand, info.mhd].filter(Boolean);
+      showSR('✓ ' + (found.join(' · ') || 'Daten ausgelesen — bitte prüfen'), 'ok');
+      toast('Verpackung analysiert ✓', 'ok');
+
+      // Wenn Barcode/PZN gefunden → Lookup anbieten
+      if (info.ean || info.pzn) {
+        document.getElementById('lk-btn').style.display = 'block';
+      }
+
+    } catch(err) {
+      showSR('Analyse fehlgeschlagen: ' + err.message + ' — Felder bitte manuell ausfüllen', 'info');
+      toast('KI-Analyse fehlgeschlagen', 'inf');
+    } finally {
+      setTimeout(() => prog.style.display = 'none', 3000);
+    }
+  }
+
+  /** File → base64 (ohne data:... Präfix) */
+  function fileToBase64(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+
+  /* ══ BARCODE LOOKUP — mehrstufige Kaskade ════════════════
+     1. OpenFoodFacts  (EAN, viele OTC-Produkte)
+     2. OpenFDA        (US-Datenbank, internationale Wirkstoffe)
+     Beide gratis, kein API-Key nötig.
+  ══════════════════════════════════════════════════════════ */
+  async function lookup() {
+    const bc  = document.getElementById('f-barcode').value.trim() ||
+                document.getElementById('f-pzn').value.trim();
+    if (!bc) return;
+
+    const btn = document.getElementById('lk-btn');
+    btn.innerHTML = '<span class="spin"></span>Suche läuft…';
+    btn.disabled = true;
+
+    try {
+      let found = false;
+
+      // ── Stufe 1: OpenFoodFacts (EAN → Produktdaten)
+      if (!found && bc.length >= 8) {
+        try {
+          const r = await fetch(
+            `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(bc)}.json`,
+            { signal: AbortSignal.timeout(6000) }
+          );
+          if (r.ok) {
+            const d = await r.json();
+            if (d.status === 1 && d.product) {
+              const p = d.product;
+              const name  = p.product_name_de || p.product_name || p.generic_name || '';
+              const brand = p.brands || '';
+              const qty   = p.quantity || '';
+              if (name  && !document.getElementById('f-name').value.trim())  document.getElementById('f-name').value  = name;
+              if (brand && !document.getElementById('f-brand').value.trim()) document.getElementById('f-brand').value = brand;
+              if (qty   && !document.getElementById('f-qty').value.trim())   document.getElementById('f-qty').value   = qty;
+              showSR(`✓ OpenFoodFacts: ${name || bc}${brand ? ' · ' + brand : ''}`, 'ok');
+              toast('Produktdaten geladen ✓', 'ok');
+              found = true;
+            }
+          }
+        } catch {}
+      }
+
+      // ── Stufe 2: OpenFDA (Wirkstoffname via EAN/NDC)
+      if (!found) {
+        try {
+          const r = await fetch(
+            `https://api.fda.gov/drug/ndc.json?search=package_ndc:"${encodeURIComponent(bc)}"&limit=1`,
+            { signal: AbortSignal.timeout(6000) }
+          );
+          if (r.ok) {
+            const d = await r.json();
+            if (d.results?.length > 0) {
+              const p     = d.results[0];
+              const name  = p.brand_name || p.generic_name || '';
+              const brand = p.labeler_name || '';
+              const qty   = p.dosage_form || '';
+              if (name  && !document.getElementById('f-name').value.trim())  document.getElementById('f-name').value  = name;
+              if (brand && !document.getElementById('f-brand').value.trim()) document.getElementById('f-brand').value = brand;
+              if (qty   && !document.getElementById('f-qty').value.trim())   document.getElementById('f-qty').value   = qty;
+              showSR(`✓ OpenFDA: ${name || bc}`, 'ok');
+              toast('Produktdaten geladen ✓', 'ok');
+              found = true;
+            }
+          }
+        } catch {}
+      }
+
+      if (!found) {
+        showSR('Kein Eintrag gefunden — Felder bitte manuell ausfüllen', 'info');
+        toast('Nicht in Datenbank gefunden', 'inf');
+      }
+
+    } catch(err) {
+      if (!navigator.onLine) showSR('Offline – bitte manuell eingeben', 'info');
+      else showSR('Fehler: ' + err.message, 'err');
+    } finally {
+      btn.innerHTML = '🔍 Produktdaten laden (EAN/PZN-Suche)';
+      btn.disabled  = false;
     }
   }
 
   function showSR(msg,type){const e=document.getElementById('sr-msg');e.textContent=msg;e.className=`sr-msg ${type}`;e.style.display='block';}
   function hideSR(){const e=document.getElementById('sr-msg');e.style.display='none';e.textContent='';e.className='sr-msg';}
-
-  /* ══ OCR ══════════════════════════════════════════════════ */
-  function startOCR(){document.getElementById('ocr-file').click();}
-
-  async function runOCR(event){
-    const file=event.target.files?.[0];if(!file)return;
-    event.target.value='';
-    const prog=document.getElementById('ocr-prog');
-    const msg=document.getElementById('ocr-msg');
-    const bf=document.getElementById('ocr-bf');
-    prog.style.display='block'; msg.textContent='📸 Bild wird verarbeitet…'; bf.style.width='0%';
-
-    try{
-      if(typeof Tesseract==='undefined')throw new Error('Tesseract nicht geladen');
-      const worker=await Tesseract.createWorker('deu',1,{
-        logger:p=>{
-          if(p.status==='recognizing text'){
-            const pc=Math.round((p.progress||0)*100);
-            bf.style.width=pc+'%'; msg.textContent=`📸 OCR: ${pc}%`;
-          }
-        }
-      });
-      const res=await worker.recognize(file);
-      await worker.terminate();
-      const text=res.data.text;
-
-      // Muster für Ablaufdaten (deutsch: MM/YYYY, MM.YYYY, YYYY-MM, DD.MM.YYYY)
-      const patterns=[
-        /\b(0?[1-9]|1[0-2])[\/\.\-](20[2-9]\d)\b/g,    // MM/YYYY
-        /\b(20[2-9]\d)[\/\.\-](0?[1-9]|1[0-2])\b/g,    // YYYY-MM
-        /\b(0?[1-9]|[12]\d|3[01])[\/\.\-](0?[1-9]|1[0-2])[\/\.\-](20[2-9]\d)\b/g, // DD.MM.YYYY
-        /\b(0?[1-9]|1[0-2])[\/\.\-]([2-9]\d)\b/g,      // MM/YY
-      ];
-
-      let found=null;
-      for(const p of patterns){
-        const ms=[...text.matchAll(p)];
-        if(!ms.length)continue;
-        const g=ms[0];
-        let yr,mo,dy=1;
-        if(g[3]){dy=parseInt(g[1]);mo=parseInt(g[2])-1;yr=parseInt(g[3]);}      // DD.MM.YYYY
-        else if(g[0].match(/^20[2-9]\d/)){yr=parseInt(g[1]);mo=parseInt(g[2])-1;} // YYYY-MM
-        else{mo=parseInt(g[1])-1;yr=parseInt(g[2])<100?2000+parseInt(g[2]):parseInt(g[2]);} // MM/YYYY|YY
-        const d=new Date(yr,mo,dy);
-        if(!isNaN(d)&&d>new Date()){found=d.toISOString().split('T')[0];break;}
-      }
-
-      if(found){
-        document.getElementById('f-mhd').value=found;
-        msg.textContent=`✓ MHD erkannt: ${new Date(found).toLocaleDateString('de-DE')}`;
-        bf.style.width='100%';
-        toast('MHD erkannt ✓','ok');
-      } else {
-        msg.textContent='⚠️ Kein Datum erkannt — bitte manuell eingeben';
-        toast('Kein Datum erkannt','inf');
-      }
-      setTimeout(()=>prog.style.display='none',4000);
-    }catch(err){prog.style.display='none';toast('OCR-Fehler: '+err.message,'err');}
-  }
+  function startOCR(){}  // Legacy stub
+  function runOCR(){}    // Legacy stub
 
   /* ══ PUSH NOTIFICATIONS ═══════════════════════════════════ */
   async function toggleNotif(){
@@ -1480,7 +1619,7 @@ const App=(()=>{
   function h(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
   return {init,render,view,openAdd,openEdit,closeModal,ovClick,save,del,clearAll,
-          startScan,runScan,toggleScan,onBcInput,lookup,handleCode,startOCR,runOCR,
+          startPhotoScan,runPhotoScan,startScan,runScan,toggleScan,onBcInput,lookup,handleCode,startOCR,runOCR,
           toggleNotif,saveCfg,exportiCloud,exportJSON,importJSON,gotoExpiring,confResolve,confCancel};
 })();
 
