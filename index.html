@@ -585,7 +585,10 @@
           <input type="number" id="cfg-days" min="1" max="365" value="30" style="width:68px;text-align:center" onchange="App.saveCfg()" />
         </div>
         <div class="sr">
-          <div class="srl"><span class="srt">Push-Benachrichtigungen</span><span class="srs">Tägliche Erinnerung</span></div>
+          <div class="srl">
+            <span class="srt">Push (nur bei geöffneter App)</span>
+            <span class="srs">iOS-Limit: kein Hintergrund-Push → Kurzbefehl nutzen</span>
+          </div>
           <label class="toggle"><input type="checkbox" id="cfg-notif" onchange="App.toggleNotif()"><span class="ts"></span></label>
         </div>
         <div class="sr">
@@ -633,13 +636,40 @@
       <!-- iCloud How-To -->
       <div class="ss" id="icloud-howto">
         <div class="sr" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px 15px">
-          <span class="srt" style="margin-bottom:4px">📖 So geht's — Schritt für Schritt</span>
+          <span class="srt" style="margin-bottom:4px">📖 Export &amp; Sync — Schritt für Schritt</span>
           <div style="display:flex;flex-direction:column;gap:8px">
             <div class="howto-step"><span class="step-n">1</span><span class="step-t">„In iCloud Drive exportieren" tippen → Share Sheet öffnet sich</span></div>
-            <div class="howto-step"><span class="step-n">2</span><span class="step-t">„In Dateien sichern" wählen → Ordner <em>iCloud Drive / MediSchrank</em> anlegen &amp; speichern</span></div>
-            <div class="howto-step"><span class="step-n">3</span><span class="step-t">Auf dem anderen Gerät: App öffnen → „Aus iCloud Drive importieren" → Datei auswählen</span></div>
-            <div class="howto-step"><span class="step-n">💡</span><span class="step-t">Nach jeder größeren Änderung einfach erneut exportieren — überschreibt die alte Datei</span></div>
+            <div class="howto-step"><span class="step-n">2</span><span class="step-t">„In Dateien sichern" → Ordner <em>iCloud Drive / MediSchrank</em> wählen → Speichern. Datei heißt immer <strong>medischrank.json</strong></span></div>
+            <div class="howto-step"><span class="step-n">3</span><span class="step-t">Auf anderem Gerät: App → „Aus iCloud Drive importieren" → gleiche Datei wählen</span></div>
           </div>
+        </div>
+      </div>
+
+      <!-- Shortcuts Benachrichtigung -->
+      <div class="ss">
+        <div class="sr" style="flex-direction:column;align-items:stretch;gap:8px;padding:15px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span style="font-size:1.1rem">⏰</span>
+            <span class="srt" style="font-size:.82rem">Tägliche MHD-Benachrichtigung</span>
+            <span style="margin-left:auto;font-size:.6rem;padding:2px 7px;border-radius:10px;background:rgba(245,166,35,.1);color:var(--warn);border:1px solid rgba(245,166,35,.2)">via Kurzbefehle</span>
+          </div>
+          <p style="font-size:.67rem;color:var(--text3);line-height:1.65">
+            iOS-PWAs können keine Hintergrund-Benachrichtigungen senden. Die zuverlässige Lösung: ein <strong style="color:var(--text2)">iOS Kurzbefehl</strong> der täglich automatisch prüft und eine native Benachrichtigung schickt.
+          </p>
+          <div style="background:var(--surf2);border-radius:var(--rs);padding:12px;font-size:.67rem;color:var(--text2);line-height:1.8">
+            <strong style="color:var(--acc);display:block;margin-bottom:6px">Kurzbefehl einrichten:</strong>
+            <span style="color:var(--text3)">1.</span> Kurzbefehle-App → <strong>+</strong> → Neuer Kurzbefehl<br>
+            <span style="color:var(--text3)">2.</span> Aktion: <strong>„Datei abrufen"</strong> → iCloud Drive → MediSchrank → medischrank.json<br>
+            <span style="color:var(--text3)">3.</span> Aktion: <strong>„Text aus Eingabe abrufen"</strong><br>
+            <span style="color:var(--text3)">4.</span> Aktion: <strong>„Wörterbuch abrufen"</strong> (JSON parsen)<br>
+            <span style="color:var(--text3)">5.</span> Aktion: <strong>„Mitteilung anzeigen"</strong> → Text: „MHD prüfen!"<br>
+            <span style="color:var(--text3)">6.</span> Tab <strong>Automation</strong> → + → Tageszeit → täglich 09:00 → Kurzbefehl auswählen
+          </div>
+          <button class="btn sec sm" onclick="App.copyShortcutScript()"
+            style="width:100%;margin-top:4px">
+            📋 Kurzbefehl-Skript kopieren
+          </button>
+          <div id="shortcut-copied" style="font-size:.63rem;color:var(--ok);text-align:center;display:none">✓ In Zwischenablage — in Kurzbefehle-App einfügen</div>
         </div>
       </div>
       <div class="ss">
@@ -1504,8 +1534,8 @@ Fehlende Felder als leeren String "" angeben. Nur JSON, nichts anderes.`;
    */
   async function exportiCloud() {
     const now      = new Date();
-    const dateStr  = now.toISOString().split('T')[0];                 // 2025-04-03
-    const filename = `medischrank-${dateStr}.json`;
+    // Fixer Dateiname — wichtig damit iOS Kurzbefehl die Datei findet
+    const filename = 'medischrank.json';
     const payload  = {
       v: 2,
       app: 'MediSchrank',
@@ -1689,9 +1719,52 @@ Fehlende Felder als leeren String "" angeben. Nur JSON, nichts anderes.`;
     }
   }
 
+  /* ══ SHORTCUTS SCRIPT ════════════════════════════════════
+     Generiert ein JavaScript-ähnliches Pseudo-Skript das der
+     Nutzer als Referenz für den iOS Kurzbefehl nutzen kann.
+     Der echte Kurzbefehl muss in der Kurzbefehle-App manuell
+     gebaut werden — iOS erlaubt kein direktes Importieren.
+  ══════════════════════════════════════════════════════════ */
+  function copyShortcutScript() {
+    const days = Cfg.get().days;
+    const script = `iOS Kurzbefehl: MediSchrank MHD-Check
+======================================
+Täglich ausführen (Automation → Tageszeit → 09:00 Uhr)
+
+Schritt 1: Datei abrufen
+  → iCloud Drive / MediSchrank / medischrank.json
+
+Schritt 2: JSON parsen
+  → Aktion "Wörterbuch abrufen" auf Dateiinhalt
+
+Schritt 3: Liste "meds" aus Wörterbuch abrufen
+
+Schritt 4: Jeden Eintrag wiederholen
+  → "mhd" aus aktuellem Element abrufen
+  → Datum berechnen: Tage bis MHD
+  → Wenn Tage <= ${days}:
+      Mitteilung anzeigen:
+      Titel: "💊 MediSchrank"
+      Text: "[name] läuft ab am [mhd]"
+
+Voraussetzung: medischrank.json muss in
+iCloud Drive / MediSchrank / liegen.
+→ App → Einstellungen → "In iCloud Drive exportieren"
+`;
+    navigator.clipboard?.writeText(script)
+      .then(() => {
+        document.getElementById('shortcut-copied').style.display = 'block';
+        setTimeout(() => {
+          document.getElementById('shortcut-copied').style.display = 'none';
+        }, 4000);
+        toast('Anleitung kopiert ✓', 'ok');
+      })
+      .catch(() => toast('Kopieren fehlgeschlagen', 'err'));
+  }
+
   return {init,render,view,openAdd,openEdit,closeModal,ovClick,save,del,clearAll,
           startPhotoScan,runPhotoScan,startScan,runScan,toggleScan,onBcInput,lookup,handleCode,startOCR,runOCR,
-          saveApiKey,onApiKeyInput,
+          saveApiKey,onApiKeyInput,copyShortcutScript,
           toggleNotif,saveCfg,exportiCloud,exportJSON,importJSON,gotoExpiring,confResolve,confCancel};
 })();
 
