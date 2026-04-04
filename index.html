@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    Safari Zoom-Fix:
+    - maximum-scale=1 verhindert den Auto-Zoom bei Input-Fokus
+    - user-scalable=no blockiert Pinch-Zoom → kein seitliches Ausbrechen
+    - Alle Inputs auf font-size:1rem (16px) → Safari zoomt nie
+    - viewport-fit=cover für Notch / Safe Areas
+  -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="MediSchrank" />
+  <meta name="theme-color" content="#09101f" id="theme-color-meta" />
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- iOS Home Screen Icons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="icon-152.png" />
+  <link rel="apple-touch-icon" sizes="120x120" href="icon-120.png" />
+
+  <!-- iOS Splash Screens (minimale Set für iPad + iPhone) -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>MediSchrank</title>
+
+  <!--
+    Barcode: html5-qrcode (bündelt ZXing UMD intern) → bewährt auf iOS/Safari
+    OCR:     Tesseract.js für MHD-Erkennung per Foto
+    Beide als klassische <script> Tags → kein dynamic import, kein ESM-Problem
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin="anonymous"></script>
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────── */
+    /* === DARK MODE (default) === */
+    :root {
+      --bg:   #09101f; --bg2: #0f1829; --surf: #1c2b3f; --surf2: #243348;
+      --bd:   rgba(80,160,220,.13);  --bdh: rgba(80,160,220,.3);
+      --acc:  #5eb8f5; --acc2: #43c6ac;
+      --ok:   #5ecb8f; --warn: #f5a623; --danger: #f07070;
+      --text: #dde6f0; --text2: #8fa8c0; --text3: #4d6880;
+      --r: 13px; --rs: 8px; --sh: 0 6px 28px rgba(0,0,0,.55);
+      --fh: Arial, Helvetica, sans-serif; --fm: Arial, Helvetica, sans-serif;
+      --hdr-bg: rgba(9,16,31,.9); --nav-bg: rgba(9,16,31,.96);
+      --input-bg: rgba(255,255,255,.04);
+      --scan-overlay: rgba(0,0,0,.68);
+    }
+
+    /* === LIGHT MODE tokens === */
+    :root.light {
+      --bg:   #f0f4fa; --bg2: #e8eef7; --surf: #ffffff; --surf2: #dde5f0;
+      --bd:   rgba(60,120,190,.15); --bdh: rgba(60,120,190,.35);
+      --acc:  #2080cc; --acc2: #10a88c;
+      --ok:   #1a9058; --warn: #b86e00; --danger: #c42b2b;
+      --text: #182030; --text2: #445870; --text3: #7a90aa;
+      --sh:   0 4px 18px rgba(0,0,0,.09);
+      --hdr-bg: rgba(240,244,250,.93); --nav-bg: rgba(240,244,250,.97);
+      --input-bg: rgba(0,0,0,.02);
+      --scan-overlay: rgba(255,255,255,.68);
+    }
+
+    /* === AUTO: folgt dem System wenn kein manuelles Theme gesetzt === */
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark):not(.light) {
+        --bg:   #f0f4fa; --bg2: #e8eef7; --surf: #ffffff; --surf2: #dde5f0;
+        --bd:   rgba(60,120,190,.15); --bdh: rgba(60,120,190,.35);
+        --acc:  #2080cc; --acc2: #10a88c;
+        --ok:   #1a9058; --warn: #b86e00; --danger: #c42b2b;
+        --text: #182030; --text2: #445870; --text3: #7a90aa;
+        --sh:   0 4px 18px rgba(0,0,0,.09);
+        --hdr-bg: rgba(240,244,250,.93); --nav-bg: rgba(240,244,250,.97);
+        --input-bg: rgba(0,0,0,.02);
+        --scan-overlay: rgba(255,255,255,.68);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      /* Block horizontal overflow / scroll on iOS */
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
+
+    body {
+      font-family: var(--fm);
+      font-size: 16px; /* base 16px – Safari nie auto-zoom */
+      background: var(--bg); color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    /* ── Shell ─────────────────────────────────────────── */
+    #app {
+      display: flex; flex-direction: column;
+      min-height: 100dvh;
+      max-width: 680px; margin: 0 auto;
+      overflow-x: hidden; /* hard block */
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--hdr-bg);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--bd);
+      padding: env(safe-area-inset-top,10px) 18px 12px;
+    }
+    .hdr { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .logo { display: flex; align-items: center; gap: 9px; }
+    .logo-icon {
+      width: 34px; height: 34px; flex-shrink: 0;
+      background: linear-gradient(135deg,var(--acc),var(--acc2));
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      font-size: 17px; box-shadow: 0 0 14px rgba(94,184,245,.28);
+    }
+    .logo-text { font-family: var(--fh); font-weight: 800; font-size: 1.15rem; letter-spacing: -.02em; }
+    .logo-text span { color: var(--acc); }
+    #hdr-badge { font-size: .6rem; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--bd); color: var(--text3); flex-shrink: 0; }
+
+    /* ── Alert Banner ──────────────────────────────────── */
+    #alert-banner {
+      display: none;
+      background: linear-gradient(90deg,rgba(240,112,112,.1),rgba(245,166,35,.07));
+      border-bottom: 1px solid rgba(240,112,112,.22);
+      padding: 9px 18px; font-size: .73rem; color: var(--danger); cursor: pointer;
+    }
+
+    /* ── Offline Pill ──────────────────────────────────── */
+    #offline-pill {
+      display: none; background: rgba(77,104,128,.15);
+      border-bottom: 1px solid rgba(77,104,128,.25);
+      padding: 6px 18px; font-size: .67rem; color: var(--text3); text-align: center;
+    }
+
+    /* ── Main ──────────────────────────────────────────── */
+    main { flex: 1; padding: 18px 14px; display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Stats ─────────────────────────────────────────── */
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; align-items: stretch; }
+    .stat { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r); padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; justify-content: space-between; }
+    .stat-l { font-size: .58rem; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; }
+    .stat-v { font-family: var(--fh); font-size: 1.5rem; font-weight: 700; line-height: 1; display: block; }
+    .stat-v.w { color: var(--warn); } .stat-v.d { color: var(--danger); }
+
+    /* ── Section ───────────────────────────────────────── */
+    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .sec-ttl { font-family: var(--fh); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text3); }
+
+    /* ── Search ────────────────────────────────────────── */
+    .sw { position: relative; margin-bottom: 10px; }
+    .si { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; pointer-events: none; }
+    #search {
+      width: 100%; background: var(--surf); border: 1px solid var(--bd);
+      border-radius: var(--r); padding: 11px 12px 11px 34px;
+      font-family: var(--fm); font-size: 1rem; color: var(--text); outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    #search::placeholder { color: var(--text3); }
+    #search:focus { border-color: var(--acc); box-shadow: 0 0 0 3px rgba(94,184,245,.1); }
+
+    /* ── Med Cards ─────────────────────────────────────── */
+    #med-list { display: flex; flex-direction: column; gap: 9px; }
+    .mc {
+      background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r);
+      padding: 13px 14px 13px 18px; display: grid; grid-template-columns: 1fr auto;
+      gap: 6px 12px; align-items: start; cursor: pointer; position: relative; overflow: hidden;
+      transition: border-color .15s, box-shadow .15s, transform .1s;
+    }
+    .mc::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--ok); border-radius: 3px 0 0 3px; }
+    .mc.warn::before    { background: var(--warn); }
+    .mc.danger::before  { background: var(--danger); }
+    .mc.expired::before { background: var(--text3); }
+    .mc:hover { border-color: var(--bdh); box-shadow: 0 4px 18px rgba(0,0,0,.3); transform: translateY(-1px); }
+    .mc:active { transform: translateY(0); }
+    .mc-name { font-family: var(--fh); font-size: .88rem; font-weight: 600; margin-bottom: 4px; }
+    .mc-name small { font-family: var(--fm); font-size: .63rem; color: var(--text3); font-weight: 400; margin-left: 6px; }
+    .mc-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .tag { font-size: .59rem; padding: 2px 7px; border-radius: 20px; font-family: var(--fm); letter-spacing: .03em; }
+    .tl { background: rgba(94,184,245,.08); color: var(--acc);  border: 1px solid rgba(94,184,245,.18); }
+    .tc { background: rgba(148,163,184,.06); color: var(--text3); border: 1px solid rgba(148,163,184,.1); }
+    .tq { background: rgba(67,198,172,.08); color: var(--acc2); border: 1px solid rgba(67,198,172,.15); }
+    .mp { font-size: .62rem; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+    .mp.ok      { background: rgba(94,203,143,.09); color: var(--ok);    border: 1px solid rgba(94,203,143,.18); }
+    .mp.warn    { background: rgba(245,166,35,.1);  color: var(--warn);  border: 1px solid rgba(245,166,35,.22); }
+    .mp.danger  { background: rgba(240,112,112,.09);color: var(--danger);border: 1px solid rgba(240,112,112,.18); }
+    .mp.expired { background: rgba(77,104,128,.1);  color: var(--text3); border: 1px solid rgba(77,104,128,.14); }
+    .ma { display: flex; gap: 5px; align-items: flex-start; }
+    .bi { background: none; border: none; cursor: pointer; padding: 6px; border-radius: var(--rs); color: var(--text3); font-size: 14px; line-height: 1; transition: color .13s, background .13s; }
+    .bi:hover     { color: var(--text); background: var(--surf2); }
+    .bi.del:hover { color: var(--danger); background: rgba(240,112,112,.1); }
+
+    /* ── Empty ─────────────────────────────────────────── */
+    #empty { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 56px 20px; text-align: center; }
+    #empty .eico { font-size: 2.8rem; opacity: .25; }
+    #empty .ett  { font-family: var(--fh); font-size: 1rem; font-weight: 600; color: var(--text2); }
+    #empty .es   { font-size: .73rem; color: var(--text3); max-width: 240px; line-height: 1.6; }
+
+    /* ── Stats View ────────────────────────────────────── */
+    #view-stats, #view-settings { display: none; flex-direction: column; gap: 14px; }
+    .cbox { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r); padding: 15px; }
+    .cttl { font-family: var(--fh); font-size: .67rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; color: var(--text2); margin-bottom: 12px; }
+    .br { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+    .bl { font-size: .67rem; color: var(--text2); width: 88px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bt { flex: 1; height: 7px; background: var(--surf2); border-radius: 4px; overflow: hidden; }
+    .bf { height: 100%; background: linear-gradient(90deg,var(--acc),var(--acc2)); border-radius: 4px; transition: width .5s ease; }
+    .bc { font-size: .63rem; color: var(--text3); width: 18px; text-align: right; flex-shrink: 0; }
+
+    /* ── Settings ──────────────────────────────────────── */
+    .ss { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r); overflow: hidden; }
+    .sr { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid var(--bd); gap: 14px; }
+    .sr:last-child { border-bottom: none; }
+    .srl { display: flex; flex-direction: column; gap: 2px; }
+    .srt { font-size: .79rem; color: var(--text); }
+    .srs { font-size: .62rem; color: var(--text3); }
+    .toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .ts { position: absolute; inset: 0; background: var(--surf2); border-radius: 24px; cursor: pointer; transition: background .2s; }
+    .ts::before { content: ''; position: absolute; width: 16px; height: 16px; left: 4px; top: 4px; background: var(--text3); border-radius: 50%; transition: transform .2s, background .2s; }
+    .toggle input:checked + .ts { background: rgba(94,184,245,.22); }
+    .toggle input:checked + .ts::before { transform: translateX(18px); background: var(--acc); }
+
+    /* ── FAB ───────────────────────────────────────────── */
+    #fab {
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom,0px) + 76px);
+      right: max(env(safe-area-inset-right,0px) + 24px, calc((100vw - 680px)/2 + 24px));
+      width: 54px; height: 54px;
+      background: linear-gradient(135deg,var(--acc),var(--acc2));
+      border: none; border-radius: 17px; cursor: pointer;
+      font-size: 26px; color: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 28px rgba(94,184,245,.38);
+      transition: transform .13s, box-shadow .13s; z-index: 200;
+    }
+    #fab:hover  { transform: scale(1.07); box-shadow: 0 12px 36px rgba(94,184,245,.48); }
+    #fab:active { transform: scale(.96); }
+
+    /* ── Nav ───────────────────────────────────────────── */
+    nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      /* Zentriert innerhalb der max-width wie der Rest der App */
+      max-width: 680px; margin: 0 auto;
+      background: var(--nav-bg);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--bd);
+      display: grid; grid-template-columns: repeat(3,1fr);
+      padding-bottom: env(safe-area-inset-bottom,0px);
+      z-index: 150;
+    }
+
+    /* Verhindert dass Inhalt hinter der fixed Nav verschwindet */
+    main {
+      padding-bottom: calc(env(safe-area-inset-bottom,0px) + 72px);
+    }
+    .nb {
+      background: none; border: none; cursor: pointer; padding: 12px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      color: var(--text3); font-family: var(--fm); font-size: .56rem; letter-spacing: .06em;
+      transition: color .13s;
+    }
+    .nb .ni { font-size: 19px; line-height: 1; }
+    .nb.active { color: var(--acc); }
+    .nb:hover  { color: var(--text2); }
+
+    /* ── Modal ─────────────────────────────────────────── */
+    .ov { display: none; position: fixed; inset: 0; background: var(--scan-overlay); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 500; align-items: flex-end; justify-content: center; }
+    .ov.open { display: flex; }
+    .modal { background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--r) var(--r) 0 0; width: 100%; max-width: 680px; max-height: 93dvh; overflow-y: auto; animation: sup .25s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes sup { from{transform:translateY(50px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .mhdr { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 0; margin-bottom: 14px; }
+    .mttl { font-family: var(--fh); font-size: 1rem; font-weight: 700; }
+    .mcls { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--rs); cursor: pointer; padding: 5px 10px; color: var(--text2); font-size: 13px; transition: color .13s, background .13s; }
+    .mcls:hover { color: var(--text); background: var(--surf2); }
+    .mb { padding: 0 18px 22px; }
+
+    /* ── Form ──────────────────────────────────────────── */
+    .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    label { font-size: .63rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); }
+
+    /* ALLE Inputs 16px = 1rem → Safari zoomt nie! */
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    input[type="time"],
+    select, textarea {
+      width: 100%; background: var(--surf); border: 1px solid var(--bd);
+      border-radius: var(--rs); padding: 10px 11px;
+      font-family: var(--fm); font-size: 1rem; /* 16px – critical */
+      color: var(--text); outline: none;
+      transition: border-color .18s, box-shadow .18s;
+      -webkit-appearance: none; appearance: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--acc); box-shadow: 0 0 0 3px rgba(94,184,245,.1); }
+    input::placeholder { color: var(--text3); }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.45); }
+    select option { background: var(--bg2); }
+
+    .r2 { display: flex; gap: 8px; }
+    .r2 > * { flex: 1; }
+
+    /* ── Buttons ───────────────────────────────────────── */
+    .btn { background: linear-gradient(135deg,var(--acc),var(--acc2)); color: var(--bg); border: none; border-radius: var(--rs); padding: 10px 16px; font-family: var(--fm); font-size: .81rem; font-weight: 500; cursor: pointer; white-space: nowrap; transition: opacity .13s, transform .1s; }
+    .btn:hover  { opacity: .88; }
+    .btn:active { transform: scale(.97); }
+    .btn.sec { background: var(--surf2); color: var(--text); border: 1px solid var(--bd); }
+    .btn.sec:hover { border-color: var(--bdh); opacity: 1; }
+    .btn.dng { background: rgba(240,112,112,.13); color: var(--danger); border: 1px solid rgba(240,112,112,.28); }
+    .btn.dng:hover { background: rgba(240,112,112,.2); opacity: 1; }
+    .btn.sm { padding: 8px 12px; font-size: .73rem; }
+    .fa { display: flex; gap: 8px; margin-top: 18px; }
+    .fa .btn { flex: 1; padding: 12px; font-size: .82rem; }
+
+    /* ── Scanner ───────────────────────────────────────── */
+    #scan-box { position: relative; background: #000; border-radius: var(--r); overflow: hidden; margin-bottom: 12px; display: none; }
+    #scan-video { width: 100%; display: block; max-height: 200px; object-fit: cover; }
+    .sfo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    .sfr { width: 72%; aspect-ratio: 3/1; border: 2px solid var(--acc); border-radius: 7px; box-shadow: 0 0 0 9999px rgba(0,0,0,.42); position: relative; }
+    .sln { position: absolute; left: 6px; right: 6px; height: 2px; background: linear-gradient(90deg,transparent,var(--acc),transparent); animation: scanY 2s ease-in-out infinite; }
+    @keyframes scanY { 0%,100%{top:8%} 50%{top:84%} }
+    .shint { font-size: .67rem; color: var(--text2); text-align: center; margin-bottom: 9px; }
+    .sr-msg { padding: 7px 11px; border-radius: var(--rs); font-size: .71rem; margin-bottom: 10px; display: none; }
+    .sr-msg.ok   { background: rgba(94,203,143,.09); color: var(--ok);    border: 1px solid rgba(94,203,143,.2); }
+    .sr-msg.err  { background: rgba(240,112,112,.09);color: var(--danger);border: 1px solid rgba(240,112,112,.2); }
+    .sr-msg.info { background: rgba(94,184,245,.08); color: var(--acc);   border: 1px solid rgba(94,184,245,.18); }
+
+    /* ── Lookup Spinner ────────────────────────────────── */
+    .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(94,184,245,.25); border-top-color: var(--acc); border-radius: 50%; animation: sp .7s linear infinite; vertical-align: middle; margin-right: 5px; }
+    @keyframes sp { to{transform:rotate(360deg)} }
+
+    /* ── OCR ───────────────────────────────────────────── */
+    #ocr-prog { display: none; padding: 8px 11px; background: rgba(94,184,245,.07); border: 1px solid rgba(94,184,245,.18); border-radius: var(--rs); font-size: .69rem; color: var(--acc); margin-bottom: 10px; }
+    #ocr-bt { background: var(--surf2); border-radius: 4px; height: 4px; margin-top: 6px; }
+    #ocr-bf { height: 4px; background: var(--acc); border-radius: 4px; width: 0; transition: width .2s; }
+
+    /* ── Confirm ───────────────────────────────────────── */
+    #co { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 800; align-items: center; justify-content: center; padding: 20px; }
+    #co.open { display: flex; }
+    #cb { background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--r); padding: 22px 18px; max-width: 310px; width: 100%; animation: sup .2s ease; }
+    .ctt { font-family: var(--fh); font-size: .93rem; font-weight: 700; margin-bottom: 7px; }
+    .cmg { font-size: .75rem; color: var(--text2); line-height: 1.6; margin-bottom: 18px; }
+    .ca  { display: flex; gap: 9px; }
+    .ca .btn { flex: 1; padding: 10px; }
+
+    /* ── Toasts ────────────────────────────────────────── */
+    #toasts { position: fixed; bottom: calc(env(safe-area-inset-bottom,0px) + 72px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 7px; z-index: 900; width: min(88vw,360px); pointer-events: none; }
+    .toast { background: var(--surf2); border: 1px solid var(--bdh); border-radius: var(--r); padding: 9px 14px; font-size: .75rem; color: var(--text); box-shadow: var(--sh); animation: tin .27s cubic-bezier(.34,1.56,.64,1); }
+    .toast.ok  { border-color: rgba(94,203,143,.32); color: var(--ok); }
+    .toast.err { border-color: rgba(240,112,112,.32); color: var(--danger); }
+    .toast.inf { border-color: rgba(94,184,245,.32);  color: var(--acc); }
+    @keyframes tin { from{transform:translateY(14px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+    /* ── iCloud How-To Steps ───────────────────────────── */
+    .howto-step {
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .step-n {
+      flex-shrink: 0; width: 22px; height: 22px;
+      background: rgba(94,184,245,.12); color: var(--acc);
+      border: 1px solid rgba(94,184,245,.22);
+      border-radius: 50%; font-size: .65rem; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+    .step-t { font-size: .7rem; color: var(--text2); line-height: 1.6; }
+    .step-t em { color: var(--acc2); font-style: normal; }
+
+    /* ── Theme Switcher Buttons ───────────────────────── */
+    .theme-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      background: var(--surf2); border: 1.5px solid var(--bd);
+      border-radius: var(--r); padding: 10px 8px; cursor: pointer;
+      transition: border-color .15s, background .15s, transform .1s;
+      color: var(--text2); font-family: var(--fm);
+    }
+    .theme-btn:hover  { border-color: var(--bdh); background: var(--surf); }
+    .theme-btn:active { transform: scale(.96); }
+    .theme-btn.active {
+      border-color: var(--acc); background: rgba(94,184,245,.08);
+      color: var(--acc);
+    }
+    .tbtn-ico { font-size: 1.3rem; line-height: 1; }
+    .tbtn-lbl { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
+
+    /* Light-mode adjustments for elements using hardcoded dark colors */
+    :root.light .modal,
+    :root:not(.dark):not(.light) .modal {
+      box-shadow: 0 -4px 32px rgba(0,0,0,.12);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not(.dark):not(.light) .modal { box-shadow: 0 -4px 32px rgba(0,0,0,.12); }
+    }
+
+    /* ── Lock Screen ───────────────────────────────────── */
+    /* ── Theme Switcher Buttons ───────────────────────── */
+    .theme-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      background: var(--surf2); border: 1.5px solid var(--bd);
+      border-radius: var(--r); padding: 10px 8px; cursor: pointer;
+      transition: border-color .15s, background .15s, transform .1s;
+      color: var(--text2); font-family: var(--fm);
+    }
+    .theme-btn:hover  { border-color: var(--bdh); background: var(--surf); }
+    .theme-btn:active { transform: scale(.96); }
+    .theme-btn.active {
+      border-color: var(--acc); background: rgba(94,184,245,.08);
+      color: var(--acc);
+    }
+    .tbtn-ico { font-size: 1.3rem; line-height: 1; }
+    .tbtn-lbl { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
+
+
+    /* ── Theme Switcher Buttons ─────────────────────── */
+    .theme-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      background: var(--surf2); border: 1.5px solid var(--bd);
+      border-radius: var(--r); padding: 10px 8px; cursor: pointer;
+      transition: border-color .15s, background .15s, transform .1s;
+      color: var(--text2); font-family: var(--fm);
+    }
+    .theme-btn:hover  { border-color: var(--bdh); background: var(--surf); }
+    .theme-btn:active { transform: scale(.96); }
+    .theme-btn.active {
+      border-color: var(--acc); background: rgba(94,184,245,.08); color: var(--acc);
+    }
+    .tbtn-ico { font-size: 1.3rem; line-height: 1; }
+    .tbtn-lbl { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
+
+    #lock-screen {
+      display: none; /* shown by Auth.show() */
+      position: fixed; inset: 0; z-index: 1000;
+      background: var(--bg); /* follows theme */
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 0; padding: 40px 24px;
+      animation: fadeIn .3s ease;
+    }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+    #lock-screen.visible { display: flex; }
+
+    .lock-icon {
+      font-size: 3.8rem;
+      margin-bottom: 24px;
+      filter: drop-shadow(0 0 24px rgba(94,184,245,.35));
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{filter:drop-shadow(0 0 18px rgba(94,184,245,.3))} 50%{filter:drop-shadow(0 0 32px rgba(94,184,245,.55))} }
+
+    .lock-title {
+      font-family: var(--fh); font-size: 1.6rem; font-weight: 800;
+      letter-spacing: -.02em; margin-bottom: 6px; text-align: center;
+    }
+    .lock-title span { color: var(--acc); }
+
+    .lock-sub {
+      font-size: .78rem; color: var(--text3); text-align: center;
+      line-height: 1.6; margin-bottom: 36px; max-width: 260px;
+    }
+
+    #lock-btn {
+      width: 72px; height: 72px;
+      background: linear-gradient(135deg, var(--acc), var(--acc2));
+      border: none; border-radius: 50%; cursor: pointer;
+      font-size: 2rem; color: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 0 0 rgba(94,184,245,.5);
+      transition: transform .14s, box-shadow .14s;
+      margin-bottom: 20px;
+      animation: ringPulse 2.5s ease-in-out infinite;
+    }
+    @keyframes ringPulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(94,184,245,.45); }
+      60%      { box-shadow: 0 0 0 18px rgba(94,184,245,.0); }
+    }
+    #lock-btn:hover  { transform: scale(1.08); }
+    #lock-btn:active { transform: scale(.94); }
+    #lock-btn.loading { animation: none; opacity: .7; pointer-events: none; }
+
+    .lock-hint { font-size: .67rem; color: var(--text3); text-align: center; }
+
+    .lock-err {
+      margin-top: 18px; padding: 9px 16px;
+      background: rgba(240,112,112,.1); color: var(--danger);
+      border: 1px solid rgba(240,112,112,.25); border-radius: var(--rs);
+      font-size: .73rem; text-align: center; display: none; max-width: 280px;
+    }
+
+    .lock-setup-hint {
+      margin-top: 28px; font-size: .68rem; color: var(--text3);
+      text-align: center; max-width: 260px; line-height: 1.7;
+    }
+    .lock-setup-hint a {
+      color: var(--acc); cursor: pointer; text-decoration: underline;
+      text-decoration-color: rgba(94,184,245,.4);
+    }
+
+    /* Blur content while locked */
+    #app.locked > *:not(#lock-screen) { filter: blur(8px); pointer-events: none; user-select: none; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ LOCK SCREEN ═══════════════════════════════════════ -->
+  <div id="lock-screen">
+    <div class="lock-icon">💊</div>
+    <div class="lock-title">Medi<span>Schrank</span></div>
+    <div class="lock-sub" id="lock-sub">Entsperre mit Face ID oder Touch ID um fortzufahren.</div>
+    <button id="lock-btn" onclick="Auth.unlock()" title="Entsperren">
+      <span id="lock-btn-icon">🔒</span>
+    </button>
+    <div class="lock-hint" id="lock-hint">Face ID / Touch ID</div>
+    <div class="lock-err" id="lock-err"></div>
+    <div class="lock-setup-hint" id="lock-setup-hint" style="display:none">
+      Noch kein Biometrie-Schlüssel registriert.<br>
+      <a onclick="Auth.register()">Jetzt einrichten →</a>
+    </div>
+  </div>
+
+  <header>
+    <div class="hdr">
+      <div class="logo">
+        <div class="logo-icon">💊</div>
+        <div class="logo-text">Medi<span>Schrank</span></div>
+      </div>
+      <span id="hdr-badge">0 Einträge</span>
+    </div>
+  </header>
+
+  <div id="alert-banner" onclick="App.gotoExpiring()"></div>
+  <div id="offline-pill">📴 Offline-Modus – alle Funktionen verfügbar</div>
+
+  <main>
+    <!-- LIST VIEW -->
+    <div id="view-list">
+      <div class="stats">
+        <div class="stat"><span class="stat-l">Gesamt</span><span class="stat-v" id="st-total">0</span></div>
+        <div class="stat"><span class="stat-l">Bald ablaufend</span><span class="stat-v w" id="st-warn">0</span></div>
+        <div class="stat"><span class="stat-l">Abgelaufen</span><span class="stat-v d" id="st-exp">0</span></div>
+      </div>
+      <div>
+        <div class="sec-hdr"><span class="sec-ttl">Medikamente</span></div>
+        <div class="sw"><span class="si">🔍</span><input type="text" id="search" placeholder="Name, Ort oder Barcode…" oninput="App.render()" /></div>
+        <div id="med-list"></div>
+        <div id="empty">
+          <div class="eico">🏥</div>
+          <div class="ett">Noch keine Medikamente</div>
+          <div class="es">Tippe auf + um dein erstes Medikament per Barcode-Scan oder manuell zu erfassen.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS VIEW -->
+    <div id="view-stats">
+      <div class="cbox"><div class="cttl">📦 Nach Lagerort</div><div id="ch-loc"></div></div>
+      <div class="cbox"><div class="cttl">📅 MHD-Status</div><div id="ch-st"></div></div>
+    </div>
+
+    <!-- SETTINGS VIEW -->
+    <div id="view-settings">
+      <!-- Theme -->
+      <div class="ss">
+        <div class="sr" style="flex-direction:column;align-items:stretch;gap:10px;padding:15px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span id="theme-icon" style="font-size:1.1rem">🌙</span>
+            <span class="srt" style="font-size:.82rem">Erscheinungsbild</span>
+          </div>
+          <div id="theme-switcher" style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">
+            <button class="theme-btn" id="tbtn-auto"  onclick="Theme.set('auto')" title="Folgt dem System">
+              <span class="tbtn-ico">⚙️</span><span class="tbtn-lbl">Auto</span>
+            </button>
+            <button class="theme-btn" id="tbtn-light" onclick="Theme.set('light')" title="Heller Modus">
+              <span class="tbtn-ico">☀️</span><span class="tbtn-lbl">Hell</span>
+            </button>
+            <button class="theme-btn" id="tbtn-dark"  onclick="Theme.set('dark')" title="Dunkler Modus">
+              <span class="tbtn-ico">🌙</span><span class="tbtn-lbl">Dunkel</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="ss">
+        <div class="sr">
+          <div class="srl"><span class="srt">MHD-Vorlaufzeit (Tage)</span><span class="srs">Warnung X Tage vor Ablauf</span></div>
+          <input type="number" id="cfg-days" min="1" max="365" value="30" style="width:68px;text-align:center" onchange="App.saveCfg()" />
+        </div>
+        <div class="sr">
+          <div class="srl"><span class="srt">Push-Benachrichtigungen</span><span class="srs">Tägliche Erinnerung</span></div>
+          <label class="toggle"><input type="checkbox" id="cfg-notif" onchange="App.toggleNotif()"><span class="ts"></span></label>
+        </div>
+        <div class="sr">
+          <div class="srl"><span class="srt">Uhrzeit Benachrichtigung</span><span class="srs">Tägliche Check-Zeit</span></div>
+          <input type="time" id="cfg-time" value="09:00" style="width:96px;text-align:center" onchange="App.saveCfg()" />
+        </div>
+      </div>
+      <!-- iCloud Sync Section -->
+      <div class="ss">
+        <div class="sr" style="flex-direction:column;align-items:stretch;gap:10px;padding:15px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <span style="font-size:1.1rem">☁️</span>
+            <span class="srt" style="font-size:.82rem">iCloud Drive Sync</span>
+            <span style="margin-left:auto;font-size:.6rem;padding:2px 7px;border-radius:10px;background:rgba(94,184,245,.1);color:var(--acc);border:1px solid rgba(94,184,245,.2)">Manuell</span>
+          </div>
+          <p style="font-size:.68rem;color:var(--text3);line-height:1.65;margin-bottom:4px">
+            Exportiere die Backup-Datei und speichere sie in <strong style="color:var(--text2)">iCloud Drive → MediSchrank</strong>. Auf dem anderen Gerät einfach importieren.
+          </p>
+          <!-- Export -->
+          <button class="btn" onclick="App.exportiCloud()" style="width:100%;padding:12px;font-size:.82rem">
+            ☁️ &nbsp;In iCloud Drive exportieren
+          </button>
+          <!-- Import -->
+          <button class="btn sec" onclick="document.getElementById('imp-file').click()" style="width:100%;padding:12px;font-size:.82rem">
+            📥 &nbsp;Aus iCloud Drive importieren
+          </button>
+          <!-- Last sync info -->
+          <div id="sync-info" style="font-size:.63rem;color:var(--text3);text-align:center;display:none">
+            Letzter Export: <span id="sync-date">–</span>
+          </div>
+        </div>
+        <div class="sr">
+          <div class="srl">
+            <span class="srt">Dateiname</span>
+            <span class="srs">Wird bei Export verwendet</span>
+          </div>
+          <span id="sync-filename" style="font-size:.63rem;color:var(--text3);text-align:right;max-width:160px;word-break:break-all">medischrank.json</span>
+        </div>
+        <div class="sr">
+          <div class="srl"><span class="srt">Alle Daten löschen</span><span class="srs">Unwiderruflich</span></div>
+          <button class="btn dng sm" onclick="App.clearAll()">Löschen</button>
+        </div>
+      </div>
+
+      <!-- iCloud How-To -->
+      <div class="ss" id="icloud-howto">
+        <div class="sr" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px 15px">
+          <span class="srt" style="margin-bottom:4px">📖 So geht's — Schritt für Schritt</span>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="howto-step"><span class="step-n">1</span><span class="step-t">„In iCloud Drive exportieren" tippen → Share Sheet öffnet sich</span></div>
+            <div class="howto-step"><span class="step-n">2</span><span class="step-t">„In Dateien sichern" wählen → Ordner <em>iCloud Drive / MediSchrank</em> anlegen &amp; speichern</span></div>
+            <div class="howto-step"><span class="step-n">3</span><span class="step-t">Auf dem anderen Gerät: App öffnen → „Aus iCloud Drive importieren" → Datei auswählen</span></div>
+            <div class="howto-step"><span class="step-n">💡</span><span class="step-t">Nach jeder größeren Änderung einfach erneut exportieren — überschreibt die alte Datei</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="ss">
+        <div class="sr"><div class="srl"><span class="srt">Version</span><span class="srs">MediSchrank PWA v2.0</span></div><span style="font-size:.67rem;color:var(--text3)">2.0.0</span></div>
+        <div class="sr"><div class="srl"><span class="srt">Service Worker</span><span class="srs">Offline-Cache Status</span></div><span id="sw-st" style="font-size:.67rem;color:var(--text3)">–</span></div>
+        <div class="sr"><div class="srl"><span class="srt">Datenbank</span><span class="srs">IndexedDB</span></div><span id="idb-st" style="font-size:.67rem;color:var(--text3)">–</span></div>
+      </div>
+      <div class="ss">
+        <div class="sr">
+          <div class="srl"><span class="srt">🔒 Biometrie-Sperre</span><span class="srs">Face ID / Touch ID beim Start</span></div>
+          <label class="toggle"><input type="checkbox" id="cfg-auth" onchange="Auth.toggleSetting()"><span class="ts"></span></label>
+        </div>
+        <div class="sr" id="auth-reg-row" style="display:none">
+          <div class="srl"><span class="srt">Schlüssel neu registrieren</span><span class="srs">Biometrie erneut einrichten</span></div>
+          <button class="btn sec sm" onclick="Auth.register()">Einrichten</button>
+        </div>
+        <div class="sr">
+          <div class="srl"><span class="srt">Jetzt sperren</span><span class="srs">App sofort sperren</span></div>
+          <button class="btn dng sm" onclick="Auth.lock(true)">Sperren</button>
+        </div>
+      </div>
+      <input type="file" id="imp-file" accept=".json" style="display:none" onchange="App.importJSON(event)" />
+    </div>
+  </main>
+
+  <button id="fab" onclick="App.openAdd()" title="Hinzufügen">+</button>
+
+  <nav>
+    <button class="nb active" id="nb-list"     onclick="App.view('list')">    <span class="ni">💊</span>Liste</button>
+    <button class="nb"        id="nb-stats"    onclick="App.view('stats')">   <span class="ni">📊</span>Statistik</button>
+    <button class="nb"        id="nb-settings" onclick="App.view('settings')"><span class="ni">⚙️</span>Einstellungen</button>
+  </nav>
+</div>
+
+<!-- ═══ ADD/EDIT MODAL ════════════════════════════════════ -->
+<div class="ov" id="ov-add" onclick="App.ovClick(event)">
+ <div class="modal">
+  <div class="mhdr">
+   <span class="mttl" id="mttl">💊 Medikament erfassen</span>
+   <button class="mcls" onclick="App.closeModal()">✕</button>
+  </div>
+  <div class="mb">
+
+   <!-- Barcode -->
+   <div class="fg">
+    <label>Barcode (EAN)</label>
+    <div class="r2">
+     <input type="text" id="f-barcode" placeholder="EAN-13 / Barcode" oninput="App.onBcInput()" />
+     <button class="btn sm" id="scan-btn" onclick="App.startScan()" style="flex:none;padding:10px 14px" title="Barcode per Kamera scannen">📷</button>
+    </div>
+    <!-- Verstecktes File-Input — öffnet Kamera auf iOS wie beim OCR -->
+    <input type="file" id="scan-file" accept="image/*" capture="environment" style="display:none" onchange="App.runScan(event)" />
+   </div>
+
+   <!-- Scanner-Fortschritt (gleiche Struktur wie OCR) -->
+   <div id="scan-prog" style="display:none;padding:8px 11px;background:rgba(94,184,245,.07);border:1px solid rgba(94,184,245,.18);border-radius:var(--rs);font-size:.69rem;color:var(--acc);margin-bottom:10px;">
+    <span id="scan-prog-msg">📷 Barcode wird erkannt…</span>
+    <div style="background:var(--surf2);border-radius:4px;height:4px;margin-top:6px"><div id="scan-prog-bar" style="height:4px;background:var(--acc);border-radius:4px;width:0;transition:width .3s"></div></div>
+   </div>
+
+   <!-- Scanner -->
+   <div id="scan-box" style="display:none">
+    <video id="scan-video" playsinline muted autoplay></video>
+    <div class="sfo"><div class="sfr"><div class="sln"></div></div></div>
+   </div>
+   <div class="shint" id="shint" style="display:none">Barcode in den Rahmen halten</div>
+   <div class="sr-msg" id="sr-msg"></div>
+
+   <!-- Lookup -->
+   <button class="btn sec sm" id="lk-btn" onclick="App.lookup()" style="display:none;width:100%;margin-bottom:12px">
+    🔍 Produktinfo laden (OpenFoodFacts)
+   </button>
+
+   <!-- Name -->
+   <div class="fg">
+    <label>Medikamentenname *</label>
+    <input type="text" id="f-name" placeholder="z.B. Ibuprofen 400mg" />
+   </div>
+
+   <!-- Lagerort -->
+   <div class="fg">
+    <label>Lagerort / Fach</label>
+    <input type="text" id="f-loc" placeholder="z.B. Bad, Schlafzimmer, Schublade 2…" list="loc-dl" />
+    <datalist id="loc-dl"></datalist>
+   </div>
+
+   <!-- MHD + OCR -->
+   <div class="fg">
+    <label>Mindesthaltbarkeitsdatum *</label>
+    <div class="r2">
+     <input type="date" id="f-mhd" />
+     <button class="btn sec sm" onclick="App.startOCR()" style="flex:none;padding:10px 14px" title="MHD per Foto erkennen">📸 OCR</button>
+    </div>
+    <input type="file" id="ocr-file" accept="image/*" capture="environment" style="display:none" onchange="App.runOCR(event)" />
+   </div>
+
+   <!-- OCR Progress -->
+   <div id="ocr-prog"><span id="ocr-msg">📸 OCR läuft…</span><div id="ocr-bt"><div id="ocr-bf"></div></div></div>
+
+   <!-- Menge / Hersteller -->
+   <div class="r2">
+    <div class="fg" style="margin-bottom:0"><label>Menge</label><input type="text" id="f-qty" placeholder="z.B. 20 Stk." /></div>
+    <div class="fg" style="margin-bottom:0"><label>Hersteller</label><input type="text" id="f-brand" placeholder="optional" /></div>
+   </div>
+   <div class="fg" style="margin-top:12px"><label>Notizen / Dosierung</label><input type="text" id="f-notes" placeholder="Hinweise…" /></div>
+
+   <div class="fa">
+    <button class="btn sec" onclick="App.closeModal()">Abbrechen</button>
+    <button class="btn" onclick="App.save()">Speichern</button>
+   </div>
+
+  </div>
+ </div>
+</div>
+
+<!-- ═══ CONFIRM ═══ -->
+<div id="co" onclick="App.confCancel(event)">
+ <div id="cb">
+  <div class="ctt" id="ctt">Sicher?</div>
+  <div class="cmg" id="cmg"></div>
+  <div class="ca">
+   <button class="btn sec" onclick="App.confResolve(false)">Abbrechen</button>
+   <button class="btn dng" onclick="App.confResolve(true)">Bestätigen</button>
+  </div>
+ </div>
+</div>
+
+<div id="toasts"></div>
+<!-- Html5Qrcode braucht ein DOM-Element als Anker (versteckt) -->
+<div id="__scan_tmp__" style="display:none"></div>
+
+<!-- ═══ SERVICE WORKER BLOB ══════════════════════════════ -->
+<script>
+(function() {
+  if (!('serviceWorker' in navigator)) return;
+  const SW = `
+const VER = 'ms-v2';
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(VER).then(c => c.add(self.location.href.split('?')[0])).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k=>k!==VER).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const u = e.request.url;
+  const isAPI = u.includes('openfoodfacts') || u.includes('googleapis.com');
+  if (isAPI) {
+    e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(VER).then(ca=>ca.put(e.request,c));return r;}).catch(()=>caches.match(e.request)));
+  } else {
+    e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{if(res.ok&&e.request.method==='GET'){const cl=res.clone();caches.open(VER).then(ca=>ca.put(e.request,cl));}return res;}).catch(()=>caches.match(self.location.href.split('?')[0]))));
+  }
+});`;
+  const blob = new Blob([SW], {type:'application/javascript'});
+  navigator.serviceWorker.register(URL.createObjectURL(blob))
+    .then(()=>{
+      const el = document.getElementById('sw-st');
+      if (el) { el.textContent = '✓ aktiv'; el.style.color = 'var(--ok)'; }
+    })
+    .catch(()=>{
+      const el = document.getElementById('sw-st');
+      if (el) { el.textContent = '– nicht aktiv'; }
+    });
+})();
+</script>
+
+<!-- ═══ INDEXEDDB ════════════════════════════════════════ -->
+<script>
+const DB = (()=>{
+  const DB_NAME='MediSchrank', DB_VER=2, STORE='meds';
+  let _db=null;
+  function open(){
+    if(_db) return Promise.resolve(_db);
+    return new Promise((res,rej)=>{
+      const r=indexedDB.open(DB_NAME,DB_VER);
+      r.onupgradeneeded=e=>{
+        const db=e.target.result;
+        if(!db.objectStoreNames.contains(STORE)){
+          const s=db.createObjectStore(STORE,{keyPath:'id'});
+          s.createIndex('mhd','mhd',{unique:false});
+          s.createIndex('location','location',{unique:false});
+        }
+      };
+      r.onsuccess=e=>{_db=e.target.result;res(_db);};
+      r.onerror=()=>rej(r.error);
+    });
+  }
+  function tx(mode,fn){
+    return open().then(db=>new Promise((res,rej)=>{
+      const t=db.transaction(STORE,mode),s=t.objectStore(STORE),rq=fn(s);
+      rq.onsuccess=()=>res(rq.result);
+      rq.onerror=()=>rej(rq.error);
+    }));
+  }
+  return {
+    getAll: ()=>tx('readonly',s=>s.getAll()),
+    put:    v=>tx('readwrite',s=>s.put(v)),
+    del:    id=>tx('readwrite',s=>s.delete(id)),
+    clear:  ()=>tx('readwrite',s=>s.clear()),
+    putAll: items=>open().then(db=>new Promise((res,rej)=>{
+      const t=db.transaction(STORE,'readwrite'),s=t.objectStore(STORE);
+      items.forEach(i=>s.put(i));
+      t.oncomplete=()=>res(); t.onerror=()=>rej(t.error);
+    }))
+  };
+})();
+</script>
+
+<!-- ═══ APP CORE ══════════════════════════════════════════ -->
+<script>
+/* ── Config ──────────────────────────────────────────────── */
+const Cfg=(()=>{
+  const K='ms_cfg2';
+  let c={days:30,notif:false,time:'09:00'};
+  function load(){
+    try{const r=localStorage.getItem(K);if(r)c={...c,...JSON.parse(r)};}catch{}
+    document.getElementById('cfg-days').value=c.days;
+    document.getElementById('cfg-notif').checked=c.notif;
+    document.getElementById('cfg-time').value=c.time;
+  }
+  function save(){
+    c.days=parseInt(document.getElementById('cfg-days').value)||30;
+    c.notif=document.getElementById('cfg-notif').checked;
+    c.time=document.getElementById('cfg-time').value;
+    localStorage.setItem(K,JSON.stringify(c)); return c;
+  }
+  function get(){return c;}
+  return {load,save,get};
+})();
+
+/* ── App ─────────────────────────────────────────────────── */
+const App=(()=>{
+  let meds=[],editId=null,scanning=false,streamRef=null,
+      nativeDet=null,scanRAF=null,confFn=null;
+
+  /* INIT */
+  async function init(){
+    Cfg.load();
+    try {
+      meds=await DB.getAll();
+      const el=document.getElementById('idb-st');
+      if(el){el.textContent=`✓ ${meds.length} Einträge`;el.style.color='var(--ok)';}
+    } catch(e) {
+      const el=document.getElementById('idb-st');
+      if(el){el.textContent='Fehler: '+e.message;el.style.color='var(--danger)';}
+    }
+    render(); updateStats(); updateBanner(); updateLocDL(); schedNotif(); monitorOnline();
+    document.getElementById('f-mhd').min=new Date().toISOString().split('T')[0];
+    updateSyncUI();
+  }
+
+  function monitorOnline(){
+    const p=document.getElementById('offline-pill');
+    const u=()=>{p.style.display=navigator.onLine?'none':'block';};
+    window.addEventListener('online',u); window.addEventListener('offline',u); u();
+  }
+
+  /* MHD */
+  function status(mhd){
+    if(!mhd) return 'ok';
+    const t=new Date();t.setHours(0,0,0,0);
+    const d=Math.floor((new Date(mhd)-t)/86400000);
+    if(d<0) return 'expired';
+    if(d<=7) return 'danger';
+    if(d<=Cfg.get().days) return 'warn';
+    return 'ok';
+  }
+  function label(mhd){
+    if(!mhd) return '– kein MHD';
+    const t=new Date();t.setHours(0,0,0,0);
+    const d=Math.floor((new Date(mhd)-t)/86400000);
+    if(d<0)  return `Abgelaufen (${Math.abs(d)}d)`;
+    if(d===0) return 'Läuft heute ab!';
+    if(d<=7)  return `Noch ${d} Tag${d===1?'':'e'}!`;
+    return new Date(mhd).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+  }
+
+  /* RENDER */
+  function render(){
+    const q=(document.getElementById('search').value||'').toLowerCase();
+    const f=meds.filter(m=>!q||m.name.toLowerCase().includes(q)||(m.location||'').toLowerCase().includes(q)||(m.barcode||'').includes(q));
+    const ord={expired:0,danger:1,warn:2,ok:3};
+    f.sort((a,b)=>{const sa=status(a.mhd),sb=status(b.mhd);if(ord[sa]!==ord[sb])return ord[sa]-ord[sb];return new Date(a.mhd||'9999')-new Date(b.mhd||'9999');});
+    const list=document.getElementById('med-list'),empty=document.getElementById('empty');
+    if(!f.length){list.innerHTML='';empty.style.display='flex';return;}
+    empty.style.display='none';
+    list.innerHTML=f.map(m=>{
+      const st=status(m.mhd);
+      return `<div class="mc ${st}" onclick="App.openEdit('${m.id}')">
+        <div>
+          <div class="mc-name">${h(m.name)}${m.brand?`<small>${h(m.brand)}</small>`:''}</div>
+          <div class="mc-meta">
+            ${m.location?`<span class="tag tl">📍 ${h(m.location)}</span>`:''}
+            ${m.barcode?`<span class="tag tc">▮ ${h(m.barcode)}</span>`:''}
+            ${m.qty?`<span class="tag tq">${h(m.qty)}</span>`:''}
+            <span class="mp ${st}">${label(m.mhd)}</span>
+          </div>
+        </div>
+        <div class="ma" onclick="event.stopPropagation()">
+          <button class="bi" onclick="App.openEdit('${m.id}')">✏️</button>
+          <button class="bi del" onclick="App.del('${m.id}')">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function updateStats(){
+    const t=meds.length,ex=meds.filter(m=>status(m.mhd)==='expired').length,
+          w=meds.filter(m=>['warn','danger'].includes(status(m.mhd))).length;
+    document.getElementById('st-total').textContent=t;
+    document.getElementById('st-warn').textContent=w;
+    document.getElementById('st-exp').textContent=ex;
+    document.getElementById('hdr-badge').textContent=`${t} Eintr${t===1?'ag':'äge'}`;
+  }
+
+  function updateBanner(){
+    const ex=meds.filter(m=>['warn','danger','expired'].includes(status(m.mhd)));
+    const b=document.getElementById('alert-banner');
+    if(ex.length){b.innerHTML=`⚠️ ${ex.length} Medikament${ex.length===1?'':'e'}: Mindesthaltbarkeitsdatum demnächst abgelaufen — tippen`;b.style.display='block';}
+    else b.style.display='none';
+  }
+
+  function gotoExpiring(){view('list');window.scrollTo({top:0,behavior:'smooth'});}
+
+  function updateLocDL(){
+    const locs=[...new Set(meds.map(m=>m.location).filter(Boolean))];
+    document.getElementById('loc-dl').innerHTML=locs.map(l=>`<option value="${h(l)}">`).join('');
+  }
+
+  /* VIEW */
+  function view(v){
+    ['list','stats','settings'].forEach(n=>{
+      const el=document.getElementById(`view-${n}`);
+      el.style.display=n===v?'flex':'none';
+      el.style.flexDirection='column';
+      document.getElementById(`nb-${n}`).classList.toggle('active',n===v);
+    });
+    document.getElementById('fab').style.display=v==='list'?'flex':'none';
+    if(v==='stats') charts();
+  }
+
+  function charts(){
+    // By location
+    const lm={};
+    meds.forEach(m=>{const k=m.location||'(kein Ort)';lm[k]=(lm[k]||0)+1;});
+    const mxL=Math.max(...Object.values(lm),1);
+    document.getElementById('ch-loc').innerHTML=
+      Object.entries(lm).sort((a,b)=>b[1]-a[1]).slice(0,8)
+        .map(([l,c])=>`<div class="br"><span class="bl">${h(l)}</span><div class="bt"><div class="bf" style="width:${(c/mxL*100).toFixed(1)}%"></div></div><span class="bc">${c}</span></div>`).join('')
+      ||'<span style="font-size:.73rem;color:var(--text3)">Keine Daten</span>';
+    // By status
+    const sm={ok:0,warn:0,danger:0,expired:0};
+    meds.forEach(m=>sm[status(m.mhd)]++);
+    const mxS=Math.max(...Object.values(sm),1);
+    const sl={ok:'✅ In Ordnung',warn:'⚠️ Bald ablaufend',danger:'🔴 Dringend',expired:'⬛ Abgelaufen'};
+    const sc={ok:'var(--ok)',warn:'var(--warn)',danger:'var(--danger)',expired:'var(--text3)'};
+    document.getElementById('ch-st').innerHTML=
+      Object.entries(sm).map(([s,c])=>`<div class="br"><span class="bl">${sl[s]}</span><div class="bt"><div class="bf" style="width:${(c/mxS*100).toFixed(1)}%;background:${sc[s]}"></div></div><span class="bc">${c}</span></div>`).join('');
+  }
+
+  /* MODAL */
+  function openAdd(){editId=null;document.getElementById('mttl').textContent='💊 Medikament erfassen';clearForm();document.getElementById('ov-add').classList.add('open');}
+  function openEdit(id){
+    editId=id;const m=meds.find(x=>x.id===id);if(!m)return;
+    document.getElementById('mttl').textContent='✏️ Medikament bearbeiten';
+    ['barcode','name','loc','mhd','qty','brand','notes'].forEach(f=>{
+      document.getElementById(`f-${f}`).value=m[f==='loc'?'location':f]||'';
+    });
+    document.getElementById('lk-btn').style.display=m.barcode?'block':'none';
+    document.getElementById('ov-add').classList.add('open');
+  }
+  function closeModal(){stopScan();document.getElementById('ov-add').classList.remove('open');clearForm();editId=null;}
+  function ovClick(e){if(e.target===e.currentTarget)closeModal();}
+  function clearForm(){
+    ['barcode','name','loc','mhd','qty','brand','notes'].forEach(f=>document.getElementById(`f-${f}`).value='');
+    hideSR(); document.getElementById('lk-btn').style.display='none';
+    document.getElementById('ocr-prog').style.display='none';
+    document.getElementById('scan-prog').style.display='none';
+    stopScan();
+  }
+
+  /* SAVE */
+  async function save(){
+    const name=document.getElementById('f-name').value.trim();
+    const mhd=document.getElementById('f-mhd').value.trim();
+    if(!name){toast('Bitte Namen eingeben','err');document.getElementById('f-name').focus();return;}
+    if(!mhd) {toast('Bitte MHD eingeben','err');document.getElementById('f-mhd').focus();return;}
+    const now=Date.now();
+    const entry={
+      id:editId||String(now), name,
+      barcode:document.getElementById('f-barcode').value.trim(),
+      location:document.getElementById('f-loc').value.trim(),
+      mhd,
+      qty:document.getElementById('f-qty').value.trim(),
+      brand:document.getElementById('f-brand').value.trim(),
+      notes:document.getElementById('f-notes').value.trim(),
+      createdAt:editId?(meds.find(x=>x.id===editId)?.createdAt||now):now,
+      updatedAt:now
+    };
+    await DB.put(entry);
+    meds=await DB.getAll();
+    render();updateStats();updateBanner();updateLocDL();closeModal();
+    toast(editId?'Aktualisiert ✓':'Hinzugefügt ✓','ok');
+  }
+
+  /* DELETE */
+  async function del(id){
+    const m=meds.find(x=>x.id===id);if(!m)return;
+    const ok=await confirm(`Löschen?`,`„${m.name}" wirklich entfernen?`);
+    if(!ok)return;
+    await DB.del(id);meds=await DB.getAll();render();updateStats();updateBanner();updateLocDL();toast('Gelöscht','inf');
+  }
+  async function clearAll(){
+    const ok=await confirm('Alle Daten löschen?','Diese Aktion ist unwiderruflich.');
+    if(!ok)return;
+    await DB.clear();meds=[];render();updateStats();updateBanner();toast('Alle Daten gelöscht','inf');
+  }
+
+  /* ══ SCANNER ═════════════════════════════════════════════
+     iOS Safari kompatible Strategie:
+     
+     1. input[type=file capture=environment] → iOS Kamera öffnet sich
+     2. Foto → Html5Qrcode.scanFile() [bewährt, iOS-getestet]
+        → intern: ZXing UMD (gebündelt, kein ESM/dynamic-import-Problem)
+     3. Fallback: BarcodeDetector API (Chrome / Safari Desktop 17.4+)
+     4. Rotations-Fallback 90°/270°/180°
+     
+     Html5Qrcode wird über <script> im <head> geladen → synchron verfügbar,
+     kein dynamic import, kein CORS-Problem in Safari.
+  ══════════════════════════════════════════════════════════ */
+
+  function startScan() {
+    document.getElementById('scan-file').click();
+  }
+
+  async function runScan(event) {
+    const file = event.target.files?.[0]; if (!file) return;
+    event.target.value = ''; // Reset: dasselbe Foto kann nochmal gewählt werden
+
+    const prog = document.getElementById('scan-prog');
+    const msg  = document.getElementById('scan-prog-msg');
+    const bar  = document.getElementById('scan-prog-bar');
+    prog.style.display = 'block';
+    msg.textContent = '📷 Barcode wird erkannt…';
+    bar.style.width = '15%';
+
+    try {
+      let code = null;
+
+      // ── Weg 1: Html5Qrcode.scanFile() — bewährt auf iOS/Safari
+      //    Nutzt ZXing intern (UMD, kein dynamic import)
+      if (typeof Html5Qrcode !== 'undefined') {
+        try {
+          bar.style.width = '40%';
+          const scanner = new Html5Qrcode('__scan_tmp__', { verbose: false });
+          code = await scanner.scanFile(file, false);
+        } catch (e) {
+          // Kein Barcode gefunden ist kein Fehler → weiter
+          if (!e?.message?.includes('No barcode') && !e?.message?.includes('NotFoundException')) {
+            console.warn('Html5Qrcode:', e?.message);
+          }
+        }
+      }
+
+      // ── Weg 2: BarcodeDetector (Chrome / Safari Desktop 17.4+)
+      if (!code && 'BarcodeDetector' in window) {
+        try {
+          bar.style.width = '60%';
+          const bitmap = await createImageBitmap(file);
+          const det = new BarcodeDetector({
+            formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','qr_code','data_matrix','itf','codabar']
+          });
+          const res = await det.detect(bitmap);
+          if (res.length > 0) code = res[0].rawValue;
+        } catch {}
+      }
+
+      // ── Weg 3: Rotationen 90°/270°/180° (Foto quer geschossen)
+      if (!code && typeof Html5Qrcode !== 'undefined') {
+        bar.style.width = '75%';
+        for (const angle of [90, 270, 180]) {
+          try {
+            const rotated = await rotateScanFile(file, angle);
+            const scanner = new Html5Qrcode('__scan_tmp__', { verbose: false });
+            code = await scanner.scanFile(rotated, false);
+            if (code) break;
+          } catch {}
+        }
+      }
+
+      bar.style.width = '100%';
+
+      if (code) {
+        document.getElementById('f-barcode').value = code;
+        showSR(`✓ Barcode erkannt: ${code}`, 'ok');
+        document.getElementById('lk-btn').style.display = 'block';
+        msg.textContent = `✓ ${code}`;
+        toast('Barcode gescannt ✓', 'ok');
+      } else {
+        showSR('Kein Barcode erkannt — nah ran, Barcode gerade halten, gut beleuchten', 'info');
+        msg.textContent = '⚠️ Kein Barcode erkannt';
+        toast('Kein Barcode erkannt', 'inf');
+      }
+
+      setTimeout(() => { prog.style.display = 'none'; }, 4000);
+
+    } catch (err) {
+      prog.style.display = 'none';
+      showSR('Fehler: ' + err.message, 'err');
+      toast('Scan-Fehler', 'err');
+    }
+  }
+
+  /**
+   * Dreht eine Bilddatei um den angegebenen Winkel und gibt ein neues File zurück.
+   * Wird für den Rotations-Fallback genutzt.
+   */
+  async function rotateScanFile(file, angle) {
+    const bitmap = await createImageBitmap(file);
+    const rad = angle * Math.PI / 180;
+    const c = document.createElement('canvas');
+    if (angle === 90 || angle === 270) { c.width = bitmap.height; c.height = bitmap.width; }
+    else { c.width = bitmap.width; c.height = bitmap.height; }
+    const ctx = c.getContext('2d');
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+    return new Promise(res =>
+      c.toBlob(b => res(new File([b], 'rot.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.95)
+    );
+  }
+
+  function toggleScan() {}
+  function stopScan() {
+    scanning = false;
+    if (streamRef) { streamRef.getTracks().forEach(t => t.stop()); streamRef = null; }
+  }
+
+  function handleCode(code){
+    if(!code)return;
+    stopScan();
+    document.getElementById('f-barcode').value=code;
+    showSR(`✓ Barcode: ${code}`,'ok');
+    document.getElementById('lk-btn').style.display='block';
+    toast('Barcode gescannt ✓','ok');
+  }
+
+  function onBcInput(){
+    const v=document.getElementById('f-barcode').value.trim();
+    document.getElementById('lk-btn').style.display=v.length>=8?'block':'none';
+  }
+
+  /* ══ OPENFOODFACTS ════════════════════════════════════════ */
+  async function lookup(){
+    const bc=document.getElementById('f-barcode').value.trim();if(!bc)return;
+    const btn=document.getElementById('lk-btn');
+    btn.innerHTML='<span class="spin"></span>Suche läuft…';btn.disabled=true;
+    try{
+      const r=await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(bc)}.json`,
+        {signal:AbortSignal.timeout(8000)});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      if(data.status!==1||!data.product){showSR('Nicht in OpenFoodFacts — manuell eingeben','info');toast('Nicht gefunden','inf');return;}
+      const p=data.product;
+      const name=p.product_name_de||p.product_name||p.generic_name||'';
+      const brand=p.brands||'';const qty=p.quantity||'';
+      if(name&&!document.getElementById('f-name').value.trim())  document.getElementById('f-name').value=name;
+      if(brand&&!document.getElementById('f-brand').value.trim())document.getElementById('f-brand').value=brand;
+      if(qty&&!document.getElementById('f-qty').value.trim())    document.getElementById('f-qty').value=qty;
+      showSR(`✓ ${name||'Produkt'}${brand?' · '+brand:''}${qty?' · '+qty:''}` ,'ok');
+      toast('Produktinfo geladen ✓','ok');
+    }catch(err){
+      if(!navigator.onLine)showSR('Offline – manuell eingeben','info');
+      else showSR('Fehler: '+err.message,'err');
+    }finally{
+      btn.innerHTML='🔍 Produktinfo laden (OpenFoodFacts)';btn.disabled=false;
+    }
+  }
+
+  function showSR(msg,type){const e=document.getElementById('sr-msg');e.textContent=msg;e.className=`sr-msg ${type}`;e.style.display='block';}
+  function hideSR(){const e=document.getElementById('sr-msg');e.style.display='none';e.textContent='';e.className='sr-msg';}
+
+  /* ══ OCR ══════════════════════════════════════════════════ */
+  function startOCR(){document.getElementById('ocr-file').click();}
+
+  async function runOCR(event){
+    const file=event.target.files?.[0];if(!file)return;
+    event.target.value='';
+    const prog=document.getElementById('ocr-prog');
+    const msg=document.getElementById('ocr-msg');
+    const bf=document.getElementById('ocr-bf');
+    prog.style.display='block'; msg.textContent='📸 Bild wird verarbeitet…'; bf.style.width='0%';
+
+    try{
+      if(typeof Tesseract==='undefined')throw new Error('Tesseract nicht geladen');
+      const worker=await Tesseract.createWorker('deu',1,{
+        logger:p=>{
+          if(p.status==='recognizing text'){
+            const pc=Math.round((p.progress||0)*100);
+            bf.style.width=pc+'%'; msg.textContent=`📸 OCR: ${pc}%`;
+          }
+        }
+      });
+      const res=await worker.recognize(file);
+      await worker.terminate();
+      const text=res.data.text;
+
+      // Muster für Ablaufdaten (deutsch: MM/YYYY, MM.YYYY, YYYY-MM, DD.MM.YYYY)
+      const patterns=[
+        /\b(0?[1-9]|1[0-2])[\/\.\-](20[2-9]\d)\b/g,    // MM/YYYY
+        /\b(20[2-9]\d)[\/\.\-](0?[1-9]|1[0-2])\b/g,    // YYYY-MM
+        /\b(0?[1-9]|[12]\d|3[01])[\/\.\-](0?[1-9]|1[0-2])[\/\.\-](20[2-9]\d)\b/g, // DD.MM.YYYY
+        /\b(0?[1-9]|1[0-2])[\/\.\-]([2-9]\d)\b/g,      // MM/YY
+      ];
+
+      let found=null;
+      for(const p of patterns){
+        const ms=[...text.matchAll(p)];
+        if(!ms.length)continue;
+        const g=ms[0];
+        let yr,mo,dy=1;
+        if(g[3]){dy=parseInt(g[1]);mo=parseInt(g[2])-1;yr=parseInt(g[3]);}      // DD.MM.YYYY
+        else if(g[0].match(/^20[2-9]\d/)){yr=parseInt(g[1]);mo=parseInt(g[2])-1;} // YYYY-MM
+        else{mo=parseInt(g[1])-1;yr=parseInt(g[2])<100?2000+parseInt(g[2]):parseInt(g[2]);} // MM/YYYY|YY
+        const d=new Date(yr,mo,dy);
+        if(!isNaN(d)&&d>new Date()){found=d.toISOString().split('T')[0];break;}
+      }
+
+      if(found){
+        document.getElementById('f-mhd').value=found;
+        msg.textContent=`✓ MHD erkannt: ${new Date(found).toLocaleDateString('de-DE')}`;
+        bf.style.width='100%';
+        toast('MHD erkannt ✓','ok');
+      } else {
+        msg.textContent='⚠️ Kein Datum erkannt — bitte manuell eingeben';
+        toast('Kein Datum erkannt','inf');
+      }
+      setTimeout(()=>prog.style.display='none',4000);
+    }catch(err){prog.style.display='none';toast('OCR-Fehler: '+err.message,'err');}
+  }
+
+  /* ══ PUSH NOTIFICATIONS ═══════════════════════════════════ */
+  async function toggleNotif(){
+    if(document.getElementById('cfg-notif').checked){
+      if(!('Notification' in window)){toast('Push nicht unterstützt','err');document.getElementById('cfg-notif').checked=false;return;}
+      const p=await Notification.requestPermission();
+      if(p!=='granted'){toast('Berechtigung verweigert','err');document.getElementById('cfg-notif').checked=false;return;}
+      toast('Benachrichtigungen aktiviert ✓','ok');
+    }
+    saveCfg();
+  }
+
+  function schedNotif(){checkNotif();setInterval(checkNotif,60*60*1000);}
+
+  function checkNotif(){
+    const c=Cfg.get();if(!c.notif)return;
+    if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
+    const ex=meds.filter(m=>['warn','danger','expired'].includes(status(m.mhd)));
+    if(!ex.length)return;
+    const last=parseInt(localStorage.getItem('ms_ln')||'0');
+    if(Date.now()-last<3*60*60*1000)return;
+    localStorage.setItem('ms_ln',String(Date.now()));
+    const names=ex.slice(0,3).map(m=>m.name).join(', ');
+    const more=ex.length>3?` und ${ex.length-3} weitere`:'';
+    new Notification('💊 MediSchrank',{
+      body:`Mindesthaltbarkeitsdatum demnächst abgelaufen: ${names}${more}`,
+      tag:'ms-mhd',renotify:false,
+      icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%2309101f"/><text y="46" x="8" font-size="44">💊</text></svg>'
+    });
+  }
+
+  function saveCfg(){Cfg.save();updateStats();updateBanner();render();toast('Einstellungen gespeichert','ok');}
+
+  /* ══ iCLOUD EXPORT / IMPORT ══════════════════════════════ */
+
+  /**
+   * Export  –  iOS Share Sheet Strategie:
+   *
+   * navigator.share() mit files[] → öffnet das native iOS Share Sheet
+   * → Nutzer tippt „In Dateien sichern" → wählt iCloud Drive / MediSchrank
+   *
+   * Fallback (Mac / kein Share API): klassischer <a download> Link
+   */
+  async function exportiCloud() {
+    const now      = new Date();
+    const dateStr  = now.toISOString().split('T')[0];                 // 2025-04-03
+    const filename = `medischrank-${dateStr}.json`;
+    const payload  = {
+      v: 2,
+      app: 'MediSchrank',
+      exportedAt: now.toISOString(),
+      deviceInfo: navigator.userAgent.includes('iPad') ? 'iPad'
+                : navigator.userAgent.includes('iPhone') ? 'iPhone' : 'Mac/Sonstiges',
+      count: meds.length,
+      meds
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+
+    // ── Weg 1: Web Share API mit File (iOS 15+ / Safari)
+    if (navigator.canShare && navigator.share) {
+      const file = new File([blob], filename, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'MediSchrank Backup',
+            text:  `${meds.length} Medikamente – ${dateStr}`
+          });
+          // Share Sheet wurde geöffnet → Sync-Info aktualisieren
+          saveSyncMeta(filename, now);
+          toast('Share Sheet geöffnet ✓', 'ok');
+          return;
+        } catch (err) {
+          // Nutzer hat abgebrochen → kein Fehler anzeigen
+          if (err.name === 'AbortError') return;
+          // Anderer Fehler → Fallback
+        }
+      }
+    }
+
+    // ── Weg 2: Klassischer Download (Mac / ältere Browser)
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement('a'), {
+      href: url, download: filename
+    });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    saveSyncMeta(filename, now);
+    toast('Datei heruntergeladen — in iCloud Drive ablegen', 'ok');
+  }
+
+  /** Speichert Metadaten des letzten Exports für die UI */
+  function saveSyncMeta(filename, date) {
+    localStorage.setItem('ms_sync', JSON.stringify({
+      filename, date: date.toISOString()
+    }));
+    updateSyncUI();
+  }
+
+  /** Zeigt letzten Export-Zeitstempel in der Settings-UI */
+  function updateSyncUI() {
+    const raw = localStorage.getItem('ms_sync');
+    if (!raw) return;
+    try {
+      const { filename, date } = JSON.parse(raw);
+      const d = new Date(date);
+      document.getElementById('sync-info').style.display = 'block';
+      document.getElementById('sync-date').textContent =
+        d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' }) +
+        ' ' + d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+      document.getElementById('sync-filename').textContent = filename;
+    } catch {}
+  }
+
+  /**
+   * Import  –  Nutzer wählt die JSON-Datei aus Dateien / iCloud Drive.
+   * Merge-Strategie: neuere updatedAt gewinnt (kein blindes Überschreiben).
+   */
+  async function importJSON(event) {
+    const file = event.target.files?.[0]; if (!file) return;
+    event.target.value = '';
+
+    const r = new FileReader();
+    r.onload = async e => {
+      try {
+        const data  = JSON.parse(e.target.result);
+        const items = data.meds || data.medications;
+        if (!Array.isArray(items)) throw new Error('Ungültiges Format');
+
+        // Merge: für jeden importierten Eintrag prüfen ob lokale Version neuer ist
+        const localMap = Object.fromEntries(meds.map(m => [m.id, m]));
+        let added = 0, updated = 0, skipped = 0;
+
+        const merged = [...meds]; // Start mit lokalen Daten
+
+        for (const imp of items) {
+          const local = localMap[imp.id];
+          if (!local) {
+            merged.push(imp); added++;
+          } else if ((imp.updatedAt || 0) > (local.updatedAt || 0)) {
+            const idx = merged.findIndex(m => m.id === imp.id);
+            merged[idx] = imp; updated++;
+          } else {
+            skipped++;
+          }
+        }
+
+        const summary =
+          `${added} neu, ${updated} aktualisiert, ${skipped} unverändert.\n` +
+          `Gesamt nach Import: ${merged.length} Einträge.`;
+
+        const ok = await confirm('Import aus iCloud Drive', summary);
+        if (!ok) return;
+
+        await DB.clear();
+        await DB.putAll(merged);
+        meds = await DB.getAll();
+        render(); updateStats(); updateBanner(); updateLocDL();
+        toast(`Import abgeschlossen ✓ — ${merged.length} Einträge`, 'ok');
+
+      } catch(err) {
+        toast('Import-Fehler: ' + err.message, 'err');
+      }
+    };
+    r.readAsText(file);
+  }
+
+  // Legacy alias (falls noch irgendwo referenziert)
+  const exportJSON = exportiCloud;
+
+  /* ══ TOAST ════════════════════════════════════════════════ */
+  function toast(msg,type='inf',ms=3000){
+    const c=document.getElementById('toasts'),el=document.createElement('div');
+    el.className=`toast ${type}`;el.textContent=msg;c.appendChild(el);
+    setTimeout(()=>{el.style.transition='opacity .3s,transform .3s';el.style.opacity='0';el.style.transform='translateY(8px)';setTimeout(()=>el.remove(),320);},ms);
+  }
+
+  /* ══ CONFIRM ══════════════════════════════════════════════ */
+  function confirm(title,msg){
+    return new Promise(res=>{
+      confFn=res;
+      document.getElementById('ctt').textContent=title;
+      document.getElementById('cmg').textContent=msg;
+      document.getElementById('co').classList.add('open');
+    });
+  }
+  function confResolve(v){document.getElementById('co').classList.remove('open');if(confFn){confFn(v);confFn=null;}}
+  function confCancel(e){if(e.target===e.currentTarget)confResolve(false);}
+
+  /* UTIL */
+  function h(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+  return {init,render,view,openAdd,openEdit,closeModal,ovClick,save,del,clearAll,
+          startScan,runScan,toggleScan,onBcInput,lookup,handleCode,startOCR,runOCR,
+          toggleNotif,saveCfg,exportiCloud,exportJSON,importJSON,gotoExpiring,confResolve,confCancel};
+})();
+
+document.addEventListener('DOMContentLoaded', () => Auth.init());
+</script>
+
+<!-- ═══ WEBAUTHN AUTH MODULE ══════════════════════════════ -->
+<script>
+/* ════════════════════════════════════════════════════════════
+   Auth  –  WebAuthn (Passkey) Lock Screen
+   ────────────────────────────────────────────────────────────
+   Ablauf:
+   1. Beim Start: ist Auth aktiviert + Credential registriert?
+      → Lock Screen anzeigen, Entsperren per Biometrie nötig
+   2. Erstmalig: Nutzer aktiviert Toggle → register() wird
+      aufgerufen → Browser erzeugt Passkey (nur lokal)
+   3. Unlock: navigator.credentials.get() → Browser fragt
+      FaceID / TouchID → bei Erfolg App freischalten
+   4. Auto-Lock nach Inaktivität (konfig. Minuten)
+   5. Graceful Fallback wenn WebAuthn nicht verfügbar
+════════════════════════════════════════════════════════════ */
+const Auth = (() => {
+
+  /* ── Konstanten ────────────────────────────────────────── */
+  const CFG_KEY  = 'ms_auth_cfg';   // { enabled, credId, autoLockMin }
+  const RP_ID    = location.hostname || 'localhost';
+  const RP_NAME  = 'MediSchrank';
+  const USER_ID  = new Uint8Array([0x4d, 0x65, 0x64, 0x69]); // "Medi"
+
+  /* ── State ─────────────────────────────────────────────── */
+  let cfg      = { enabled: false, credId: null, autoLockMin: 5 };
+  let locked   = false;
+  let inactTimer = null;
+
+  /* ── Helpers ───────────────────────────────────────────── */
+  const supported = () =>
+    window.PublicKeyCredential !== undefined &&
+    typeof navigator.credentials?.create === 'function';
+
+  function loadCfg() {
+    try { const r = localStorage.getItem(CFG_KEY); if (r) cfg = { ...cfg, ...JSON.parse(r) }; } catch {}
+  }
+  function saveCfg() { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
+
+  // base64url encode/decode for credential IDs
+  function b64u(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  }
+  function fromb64u(str) {
+    const s = str.replace(/-/g,'+').replace(/_/g,'/');
+    return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  }
+
+  /* ── UI helpers ────────────────────────────────────────── */
+  function showLock() {
+    locked = true;
+    document.getElementById('app').classList.add('locked');
+    document.getElementById('lock-screen').classList.add('visible');
+  }
+
+  function hideLock() {
+    locked = false;
+    document.getElementById('app').classList.remove('locked');
+    document.getElementById('lock-screen').classList.remove('visible');
+    startInactivityTimer();
+  }
+
+  function setLockErr(msg) {
+    const el = document.getElementById('lock-err');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  function setLockBtn(loading) {
+    const btn = document.getElementById('lock-btn');
+    const ico = document.getElementById('lock-btn-icon');
+    btn.classList.toggle('loading', loading);
+    ico.textContent = loading ? '⏳' : '🔒';
+  }
+
+  function updateSettingsUI() {
+    const toggle   = document.getElementById('cfg-auth');
+    const regRow   = document.getElementById('auth-reg-row');
+    if (toggle) toggle.checked = cfg.enabled;
+    if (regRow) regRow.style.display = cfg.enabled ? 'flex' : 'none';
+  }
+
+  /* ── Inactivity Auto-Lock ──────────────────────────────── */
+  function startInactivityTimer() {
+    clearTimeout(inactTimer);
+    if (!cfg.enabled || cfg.autoLockMin <= 0) return;
+    inactTimer = setTimeout(() => lock(false), cfg.autoLockMin * 60 * 1000);
+  }
+
+  function resetInactivity() {
+    if (!locked && cfg.enabled) startInactivityTimer();
+  }
+
+  /* ── Init ──────────────────────────────────────────────── */
+  async function init() {
+    Theme.load();
+    loadCfg();
+    updateSettingsUI();
+
+    // Listen for user activity to reset auto-lock timer
+    ['touchstart','touchend','pointerdown','keydown'].forEach(ev =>
+      document.addEventListener(ev, resetInactivity, { passive: true })
+    );
+
+    if (!supported()) {
+      // WebAuthn not available → show hint, disable toggle
+      document.getElementById('lock-sub').textContent =
+        'Biometrie nicht verfügbar auf diesem Gerät/Browser.';
+      document.getElementById('lock-hint').textContent = 'WebAuthn nicht unterstützt';
+      const t = document.getElementById('cfg-auth');
+      if (t) { t.disabled = true; }
+      await App.init();
+      return;
+    }
+
+    if (cfg.enabled && cfg.credId) {
+      // Show lock screen immediately, THEN unlock via biometrics
+      document.getElementById('lock-screen').classList.add('visible');
+      document.getElementById('app').classList.add('locked');
+      locked = true;
+      // Small delay so screen renders before the system dialog
+      setTimeout(() => unlock(), 400);
+    } else {
+      // Auth disabled or not set up → start app directly
+      await App.init();
+      if (cfg.enabled && !cfg.credId) {
+        // Enabled but no credential yet → prompt setup
+        showSetupHint();
+      }
+    }
+  }
+
+  function showSetupHint() {
+    document.getElementById('lock-setup-hint').style.display = 'block';
+    document.getElementById('lock-screen').classList.add('visible');
+    document.getElementById('app').classList.add('locked');
+    locked = true;
+  }
+
+  /* ── REGISTER (einmalig) ───────────────────────────────── */
+  async function register() {
+    if (!supported()) { alertUnsupported(); return; }
+
+    try {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+      const cred = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp:   { id: RP_ID, name: RP_NAME },
+          user: {
+            id:          USER_ID,
+            name:        'medischrank_user',
+            displayName: 'MediSchrank Nutzer'
+          },
+          pubKeyCredParams: [
+            { type: 'public-key', alg: -7  },  // ES256 (preferred)
+            { type: 'public-key', alg: -257 }   // RS256 (fallback)
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',  // nur geräteinterne Biometrie
+            userVerification:        'required',  // FaceID / TouchID zwingend
+            requireResidentKey:      false
+          },
+          timeout: 60000,
+          attestation: 'none'  // kein Server nötig
+        }
+      });
+
+      // Credential ID speichern (base64url)
+      cfg.credId  = b64u(cred.rawId);
+      cfg.enabled = true;
+      saveCfg();
+      updateSettingsUI();
+
+      // Lock screen ausblenden falls gerade sichtbar
+      hideLock();
+      await App.init();
+
+      showToastExternal('Biometrie eingerichtet ✓', 'ok');
+
+    } catch (err) {
+      const msg = err.name === 'NotAllowedError'
+        ? 'Abgebrochen oder Biometrie abgelehnt.'
+        : err.name === 'InvalidStateError'
+        ? 'Dieses Gerät hat bereits einen Schlüssel.'
+        : `Fehler: ${err.message}`;
+      setLockErr(msg);
+      showToastExternal('Registrierung fehlgeschlagen', 'err');
+    }
+  }
+
+  /* ── UNLOCK ────────────────────────────────────────────── */
+  async function unlock() {
+    if (!cfg.credId) { showSetupHint(); return; }
+    setLockBtn(true);
+    setLockErr('');
+
+    try {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+      await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          rpId:             RP_ID,
+          allowCredentials: [{
+            type: 'public-key',
+            id:   fromb64u(cfg.credId),
+            transports: ['internal']  // nur interner Authenticator (FaceID etc.)
+          }],
+          userVerification: 'required',
+          timeout:          60000
+        }
+      });
+
+      // Erfolg → App initialisieren (falls noch nicht)
+      if (!document.getElementById('med-list').dataset.initialized) {
+        await App.init();
+        document.getElementById('med-list').dataset.initialized = 'true';
+      }
+      hideLock();
+      showToastExternal('Entsperrt ✓', 'ok');
+
+    } catch (err) {
+      setLockBtn(false);
+      const msg = err.name === 'NotAllowedError'
+        ? 'Biometrie abgelehnt oder Timeout. Erneut versuchen.'
+        : err.name === 'SecurityError'
+        ? 'Sicherheitsfehler. Prüfe HTTPS / Home Screen.'
+        : `Fehler: ${err.message}`;
+      setLockErr(msg);
+    }
+  }
+
+  /* ── LOCK ──────────────────────────────────────────────── */
+  function lock(manual = false) {
+    clearTimeout(inactTimer);
+    showLock();
+    // Auto-try unlock only on auto-lock, not on manual lock
+    if (!manual) {
+      setTimeout(() => unlock(), 400);
+    } else {
+      setLockBtn(false);
+      setLockErr('');
+      showToastExternal('App gesperrt 🔒', 'inf');
+    }
+  }
+
+  /* ── SETTING TOGGLE ────────────────────────────────────── */
+  async function toggleSetting() {
+    const on = document.getElementById('cfg-auth').checked;
+    if (on) {
+      if (!supported()) { alertUnsupported(); document.getElementById('cfg-auth').checked = false; return; }
+      // Register now
+      await register();
+    } else {
+      cfg.enabled = false; cfg.credId = null;
+      saveCfg(); updateSettingsUI();
+      showToastExternal('Biometrie-Sperre deaktiviert', 'inf');
+    }
+  }
+
+  function alertUnsupported() {
+    showToastExternal('WebAuthn nicht unterstützt auf diesem Gerät', 'err');
+  }
+
+  /* ── Toast bridge (App.toast ist private) ──────────────── */
+  function showToastExternal(msg, type) {
+    const c = document.getElementById('toasts');
+    if (!c) return;
+    const el = document.createElement('div');
+    el.className = `toast ${type}`; el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity .3s,transform .3s';
+      el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
+      setTimeout(() => el.remove(), 320);
+    }, 3000);
+  }
+
+  return { init, lock, unlock, register, toggleSetting };
+})();
+</script>
+
+<!-- ═══ THEME MODULE ═════════════════════════════════════ -->
+<script>
+/*
+  Theme  –  3 Modi: 'auto' | 'light' | 'dark'
+  - 'auto'  → folgt prefers-color-scheme (kein class auf <html>)
+  - 'light' → :root.light
+  - 'dark'  → :root.dark  (= default :root tokens)
+  Gespeichert in localStorage('ms_theme')
+*/
+const Theme = (() => {
+  const KEY = 'ms_theme';
+  let current = 'auto';
+
+  function load() {
+    current = localStorage.getItem(KEY) || 'auto';
+    apply(current, false);
+  }
+
+  function set(mode) {
+    current = mode;
+    localStorage.setItem(KEY, mode);
+    apply(mode, true);
+  }
+
+  function apply(mode, animate) {
+    const html = document.documentElement;
+
+    if (animate) {
+      // Kurzer Fade-Übergang beim Wechsel
+      html.style.transition = 'background .25s, color .25s';
+      setTimeout(() => html.style.transition = '', 300);
+    }
+
+    html.classList.remove('light', 'dark');
+    if (mode === 'light') html.classList.add('light');
+    if (mode === 'dark')  html.classList.add('dark');
+
+    // meta theme-color anpassen
+    const isLight = mode === 'light' ||
+      (mode === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches);
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', isLight ? '#f0f4fa' : '#09101f');
+
+    updateUI(mode);
+  }
+
+  function updateUI(mode) {
+    ['auto','light','dark'].forEach(m => {
+      document.getElementById('tbtn-' + m)?.classList.toggle('active', m === mode);
+    });
+    const icons = { auto: '⚙️', light: '☀️', dark: '🌙' };
+    const el = document.getElementById('theme-icon');
+    if (el) el.textContent = icons[mode] || '⚙️';
+  }
+
+  // Reagiert auf Systemwechsel wenn 'auto' aktiv
+  window.matchMedia('(prefers-color-scheme: light)')
+    .addEventListener('change', () => { if (current === 'auto') apply('auto', true); });
+
+  return { load, set };
+})();
+</script>
+</body>
+</html>
