@@ -1184,38 +1184,22 @@
 <!-- Html5Qrcode braucht ein DOM-Element als Anker (versteckt) -->
 <div id="__scan_tmp__" style="display:none"></div>
 
-<!-- ═══ SERVICE WORKER BLOB ══════════════════════════════ -->
+<!-- ═══ SERVICE WORKER: DEREGISTRIEREN + CACHES LÖSCHEN ══ -->
+<!-- SW deaktiviert — verhindert Cache-Probleme bei Updates.   -->
+<!-- Daten liegen sicher in IndexedDB, kein SW nötig.          -->
 <script>
 (function() {
   if (!('serviceWorker' in navigator)) return;
-
-  const SW = `
-const VER = 'ms-v3';
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VER).then(c => c.add(self.location.href.split('?')[0])).then(() => self.skipWaiting()));
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k=>k!==VER).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
-});
-self.addEventListener('fetch', e => {
-  const u = e.request.url;
-  const isAPI = u.includes('openfoodfacts') || u.includes('googleapis.com');
-  if (isAPI) {
-    e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(VER).then(ca=>ca.put(e.request,c));return r;}).catch(()=>caches.match(e.request)));
-  } else {
-    e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{if(res.ok&&e.request.method==='GET'){const cl=res.clone();caches.open(VER).then(ca=>ca.put(e.request,cl));}return res;}).catch(()=>caches.match(self.location.href.split('?')[0]))));
-  }
-});`;
-  const blob = new Blob([SW], {type:'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(blob))
-    .then(()=>{
-      const el = document.getElementById('sw-st');
-      if (el) { el.textContent = '✓ aktiv'; el.style.color = 'var(--ok)'; }
-    })
-    .catch(()=>{
-      const el = document.getElementById('sw-st');
-      if (el) { el.textContent = '– nicht aktiv'; }
-    });
+  Promise.all([
+    navigator.serviceWorker.getRegistrations()
+      .then(regs => Promise.all(regs.map(r => r.unregister()))),
+    ('caches' in window)
+      ? caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      : Promise.resolve()
+  ]).then(() => {
+    var el = document.getElementById('sw-st');
+    if (el) { el.textContent = 'deaktiviert'; el.style.color = 'var(--text3)'; }
+  });
 })();
 </script>
 
