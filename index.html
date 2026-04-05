@@ -163,12 +163,11 @@
       border-bottom: 1px solid var(--glass-border);
       box-shadow: 0 1px 0 var(--glass-shine), 0 4px 20px rgba(0,0,0,.2);
       padding: env(safe-area-inset-top,10px) 18px 12px;
-      /* Scroll-Away: Header verschwindet beim Runterscrollen */
-      transition: transform .25s ease, opacity .25s ease;
-      will-change: transform;
+      /* Fade beim Scrollen — kein Verschieben */
+      transition: opacity .22s ease;
+      will-change: opacity;
     }
     header.hidden {
-      transform: translateY(-100%);
       opacity: 0;
       pointer-events: none;
     }
@@ -358,7 +357,7 @@
     /* ── Floating Pill Nav (Apple Music Style) ─────────── */
     nav {
       position: fixed;
-      bottom: max(env(safe-area-inset-bottom,0px), 16px);
+      bottom: max(env(safe-area-inset-bottom,0px), 8px);
       left: 50%; transform: translateX(-50%);
       width: calc(min(100vw, 680px) - 32px);
       z-index: 150;
@@ -396,7 +395,7 @@
 
     /* Verhindert dass Inhalt hinter der floating Nav verschwindet */
     main {
-      padding-bottom: calc(max(env(safe-area-inset-bottom,0px), 16px) + 72px);
+      padding-bottom: calc(max(env(safe-area-inset-bottom,0px), 8px) + 72px);
     }
 
     .nb {
@@ -568,7 +567,7 @@
     .ca .btn { flex: 1; padding: 10px; }
 
     /* ── Toasts ────────────────────────────────────────── */
-    #toasts { position: fixed; bottom: calc(max(env(safe-area-inset-bottom,0px), 16px) + 76px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 7px; z-index: 900; width: min(88vw,360px); pointer-events: none; }
+    #toasts { position: fixed; bottom: calc(max(env(safe-area-inset-bottom,0px), 8px) + 76px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 7px; z-index: 900; width: min(88vw,360px); pointer-events: none; }
     .toast {
       background: var(--glass-bg);
       backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
@@ -600,28 +599,41 @@
     .step-t em { color: var(--acc2); font-style: normal; }
 
     /* ── Theme Switcher Buttons ───────────────────────── */
-    .theme-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 5px;
-      background: var(--glass-bg);
+    /* ── Segmented Slider Theme Switcher ──────────────── */
+    #theme-switcher {
+      position: relative;
+      display: flex;
+      background: rgba(0,0,0,.25);
+      border-radius: 999px;
+      padding: 3px;
+      gap: 0;
+    }
+    /* Sliding indicator */
+    #theme-slider-thumb {
+      position: absolute;
+      top: 3px; bottom: 3px;
+      border-radius: 999px;
+      background: var(--glass-bg-hover);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--glass-border);
-      border-top-color: var(--glass-border-t);
-      border-radius: var(--glass-radius-sm);
+      border: 1px solid var(--glass-border-t);
       box-shadow: var(--glass-shadow-sm);
-      padding: 11px 8px; cursor: pointer;
-      transition: background .15s, box-shadow .15s, transform .1s;
-      color: var(--text2); font-family: var(--fm);
+      transition: left .22s cubic-bezier(.34,1.2,.64,1), width .22s cubic-bezier(.34,1.2,.64,1);
+      pointer-events: none;
+      z-index: 0;
     }
-    .theme-btn:hover  { background: var(--glass-bg-hover); box-shadow: var(--glass-shadow); }
+    .theme-btn {
+      flex: 1; position: relative; z-index: 1;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: none; border: none; border-radius: 999px;
+      padding: 8px 6px; cursor: pointer;
+      transition: color .18s;
+      color: var(--text3); font-family: var(--fm);
+      white-space: nowrap;
+    }
     .theme-btn:active { transform: scale(.96); }
-    .theme-btn.active {
-      border-color: var(--acc);
-      background: rgba(94,184,245,.12);
-      box-shadow: 0 0 0 1px var(--acc), var(--glass-shadow-sm);
-      color: var(--acc);
-    }
-    .tbtn-ico { font-size: 1.3rem; line-height: 1; }
-    .tbtn-lbl { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
+    .theme-btn.active { color: var(--text); }
+    .tbtn-ico { font-size: 1rem; line-height: 1; }
+    .tbtn-lbl { font-size: .72rem; letter-spacing: .02em; }
 
     /* Light-mode adjustments for elements using hardcoded dark colors */
     :root.light .modal,
@@ -634,21 +646,7 @@
 
     /* ── Lock Screen ───────────────────────────────────── */
     /* ── Theme Switcher Buttons ───────────────────────── */
-    .theme-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 5px;
-      background: var(--surf2); border: 1.5px solid var(--bd);
-      border-radius: var(--r); padding: 10px 8px; cursor: pointer;
-      transition: border-color .15s, background .15s, transform .1s;
-      color: var(--text2); font-family: var(--fm);
-    }
-    .theme-btn:hover  { border-color: var(--bdh); background: var(--surf); }
-    .theme-btn:active { transform: scale(.96); }
-    .theme-btn.active {
-      border-color: var(--acc); background: rgba(94,184,245,.08);
-      color: var(--acc);
-    }
-    .tbtn-ico { font-size: 1.3rem; line-height: 1; }
-    .tbtn-lbl { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
+    /* theme-btn — siehe Segmented Slider oben */
 
 
     /* ── Theme Switcher Buttons ─────────────────────── */
@@ -816,14 +814,15 @@
             <span id="theme-icon" style="font-size:1.1rem">🌙</span>
             <span class="srt" style="font-size:.82rem">Erscheinungsbild</span>
           </div>
-          <div id="theme-switcher" style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px">
-            <button class="theme-btn" id="tbtn-auto"  onclick="Theme.set('auto')" title="Folgt dem System">
+          <div id="theme-switcher">
+            <div id="theme-slider-thumb"></div>
+            <button class="theme-btn" id="tbtn-auto"  onclick="Theme.set('auto')">
               <span class="tbtn-ico">⚙️</span><span class="tbtn-lbl">Auto</span>
             </button>
-            <button class="theme-btn" id="tbtn-light" onclick="Theme.set('light')" title="Heller Modus">
+            <button class="theme-btn" id="tbtn-light" onclick="Theme.set('light')">
               <span class="tbtn-ico">☀️</span><span class="tbtn-lbl">Hell</span>
             </button>
-            <button class="theme-btn" id="tbtn-dark"  onclick="Theme.set('dark')" title="Dunkler Modus">
+            <button class="theme-btn" id="tbtn-dark"  onclick="Theme.set('dark')">
               <span class="tbtn-ico">🌙</span><span class="tbtn-lbl">Dunkel</span>
             </button>
           </div>
@@ -1397,6 +1396,7 @@ const App=(()=>{
     });
     // nb-add immer sichtbar (in Pill Nav integriert)
     if(v==='stats') charts();
+    if(v==='settings') requestAnimationFrame(()=>{ if(typeof Theme!=='undefined') Theme.refreshThumb(); });
   }
 
   function charts(){
@@ -2128,11 +2128,9 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
       const header = document.querySelector('header');
       if (!header) { ticking = false; return; }
 
-      if (y > lastY && y > THRESHOLD) {
-        // Runterscrollen → verstecken
+      if (y > THRESHOLD) {
         header.classList.add('hidden');
-      } else if (y < lastY) {
-        // Raufscrollen → zeigen
+      } else {
         header.classList.remove('hidden');
       }
       lastY   = y;
@@ -2577,13 +2575,34 @@ const Theme = (() => {
     const icons = { auto: '⚙️', light: '☀️', dark: '🌙' };
     const el = document.getElementById('theme-icon');
     if (el) el.textContent = icons[mode] || '⚙️';
+    // Slide den Thumb zur aktiven Option
+    moveThumb(mode);
+  }
+
+  function moveThumb(mode) {
+    const switcher = document.getElementById('theme-switcher');
+    const thumb    = document.getElementById('theme-slider-thumb');
+    const active   = document.getElementById('tbtn-' + mode);
+    if (!switcher || !thumb || !active) return;
+    const sw = switcher.getBoundingClientRect();
+    const ab = active.getBoundingClientRect();
+    thumb.style.left  = (ab.left  - sw.left)  + 'px';
+    thumb.style.width = ab.width + 'px';
   }
 
   // Reagiert auf Systemwechsel wenn 'auto' aktiv
   window.matchMedia('(prefers-color-scheme: light)')
     .addEventListener('change', () => { if (current === 'auto') apply('auto', true); });
 
-  return { load, set };
+  // Thumb nach Render positionieren (DOM braucht einen Frame)
+  window.addEventListener('load', () => {
+    requestAnimationFrame(() => moveThumb(current));
+  });
+  // Auch beim Resize (iPad Rotation)
+  window.addEventListener('resize', () => moveThumb(current));
+
+  function refreshThumb() { moveThumb(current); }
+  return { load, set, refreshThumb };
 })();
 </script>
 </body>
