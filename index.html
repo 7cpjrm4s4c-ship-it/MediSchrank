@@ -28,7 +28,7 @@
     Barcode: html5-qrcode (ZXing UMD intern) → bewährt auf iOS/Safari
     OCR + Produktdaten: Claude API → Foto der Verpackung → alle Felder auf einmal
   -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" crossorigin="anonymous"></script>
 
   <style>
     /* ── Design Tokens ─────────────────────────────────── */
@@ -607,6 +607,7 @@
       border-radius: 999px;
       padding: 3px;
       gap: 0;
+      overflow: hidden; /* thumb bleibt in der Pill */
     }
     /* Sliding indicator */
     #theme-slider-thumb {
@@ -1188,24 +1189,6 @@
 (function() {
   if (!('serviceWorker' in navigator)) return;
 
-  // Cache-Buster: wenn noch ms-v2 aktiv → alle Caches löschen
-  if ('caches' in window) {
-    caches.keys().then(keys => {
-      const stale = keys.filter(k => k !== 'ms-v3');
-      if (stale.length > 0) {
-        Promise.all(stale.map(k => caches.delete(k))).then(() => {
-          // SW deregistrieren und Seite neu laden
-          navigator.serviceWorker.getRegistrations().then(regs => {
-            Promise.all(regs.map(r => r.unregister())).then(() => {
-              window.location.reload();
-            });
-          });
-        });
-        return; // Laden nicht fortsetzen, reload kommt
-      }
-    });
-  }
-
   const SW = `
 const VER = 'ms-v3';
 self.addEventListener('install', e => {
@@ -1415,7 +1398,12 @@ const App=(()=>{
     });
     // nb-add immer sichtbar (in Pill Nav integriert)
     if(v==='stats') charts();
-    if(v==='settings') requestAnimationFrame(()=>{ if(typeof Theme!=='undefined') Theme.refreshThumb(); });
+    if(v==='settings') {
+      // Zwei Frames warten — Safari braucht das um Maße nach display-Wechsel zu liefern
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        if(typeof Theme!=='undefined') Theme.refreshThumb();
+      }));
+    }
   }
 
   function charts(){
@@ -2147,9 +2135,9 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
       const header = document.querySelector('header');
       if (!header) { ticking = false; return; }
 
-      if (y > THRESHOLD) {
+      if (y > lastY && y > THRESHOLD) {
         header.classList.add('hidden');
-      } else {
+      } else if (y <= THRESHOLD || y < lastY) {
         header.classList.remove('hidden');
       }
       lastY   = y;
@@ -2599,14 +2587,36 @@ const Theme = (() => {
   }
 
   function moveThumb(mode) {
-    const switcher = document.getElementById('theme-switcher');
-    const thumb    = document.getElementById('theme-slider-thumb');
-    const active   = document.getElementById('tbtn-' + mode);
-    if (!switcher || !thumb || !active) return;
-    const sw = switcher.getBoundingClientRect();
-    const ab = active.getBoundingClientRect();
-    thumb.style.left  = (ab.left  - sw.left)  + 'px';
-    thumb.style.width = ab.width + 'px';
+    const thumb  = document.getElementById('theme-slider-thumb');
+    const active = document.getElementById('tbtn-' + mode);
+    if (!thumb || !active) return;
+
+    // offsetLeft/offsetWidth funktionieren auch wenn view-settings display:none ist
+    // da wir relativ zum Parent messen
+    const parent = active.parentElement;
+    if (!parent) return;
+
+    // Kurz sichtbar machen falls nötig um Maße zu ermitteln
+    const wasHidden = parent.offsetParent === null;
+    if (wasHidden) {
+      parent.style.visibility = 'hidden';
+      parent.style.position   = 'fixed';
+      parent.style.display    = 'flex';
+    }
+
+    const l = active.offsetLeft;
+    const w = active.offsetWidth;
+
+    if (wasHidden) {
+      parent.style.visibility = '';
+      parent.style.position   = '';
+      parent.style.display    = '';
+    }
+
+    if (w > 0) {
+      thumb.style.left  = l + 'px';
+      thumb.style.width = w + 'px';
+    }
   }
 
   // Reagiert auf Systemwechsel wenn 'auto' aktiv
