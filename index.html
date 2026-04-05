@@ -1187,8 +1187,27 @@
 <script>
 (function() {
   if (!('serviceWorker' in navigator)) return;
+
+  // Cache-Buster: wenn noch ms-v2 aktiv → alle Caches löschen
+  if ('caches' in window) {
+    caches.keys().then(keys => {
+      const stale = keys.filter(k => k !== 'ms-v3');
+      if (stale.length > 0) {
+        Promise.all(stale.map(k => caches.delete(k))).then(() => {
+          // SW deregistrieren und Seite neu laden
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            Promise.all(regs.map(r => r.unregister())).then(() => {
+              window.location.reload();
+            });
+          });
+        });
+        return; // Laden nicht fortsetzen, reload kommt
+      }
+    });
+  }
+
   const SW = `
-const VER = 'ms-v2';
+const VER = 'ms-v3';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VER).then(c => c.add(self.location.href.split('?')[0])).then(() => self.skipWaiting()));
 });
