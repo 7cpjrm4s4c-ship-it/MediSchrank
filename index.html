@@ -1294,6 +1294,7 @@ const App=(()=>{
     document.getElementById('f-mhd').min=new Date().toISOString().split('T')[0];
     updateSyncUI();
     loadApiKeyUI();
+    window._medsForPicker = meds; // Picker Zugriff
   }
 
   function monitorOnline(){
@@ -1371,7 +1372,11 @@ const App=(()=>{
 
   function updateLocDL(){
     const locs=[...new Set(meds.map(m=>m.location).filter(Boolean))];
-    document.getElementById('loc-dl').innerHTML=locs.map(l=>`<option value="${h(l)}">`).join('');
+    // loc-dl datalist (legacy) — nur befüllen falls noch im DOM
+    const dl=document.getElementById('loc-dl');
+    if(dl) dl.innerHTML=locs.map(l=>`<option value="${h(l)}">`).join('');
+    // Picker gespeicherte Orte aktualisieren (falls Picker offen)
+    if(typeof Picker!=='undefined') Picker.updateSaved();
   }
 
   /* VIEW */
@@ -1449,7 +1454,7 @@ const App=(()=>{
       updatedAt:now
     };
     await DB.put(entry);
-    meds=await DB.getAll();
+    meds=await DB.getAll(); window._medsForPicker=meds;
     render();updateStats();updateBanner();updateLocDL();closeModal();
     toast(editId?'Aktualisiert ✓':'Hinzugefügt ✓','ok');
   }
@@ -2380,6 +2385,104 @@ const Auth = (() => {
   }
 
   return { init, lock, unlock, register, toggleSetting };
+})();
+</script>
+
+<!-- ═══ LAGERORT PICKER MODULE ══════════════════════════════ -->
+<script>
+const Picker = (() => {
+  const PRESETS = ['Bad','Schlafzimmer','Küche','Wohnzimmer','Büro','Reiseapotheke','Keller'];
+  let _resolve = null;
+
+  function open() {
+    const ov = document.getElementById('picker-ov');
+    if (!ov) return;
+    ov.style.display = 'flex';
+    // Aktuellen Wert ins Textfeld
+    const cur = document.getElementById('f-loc')?.value || '';
+    const inp = document.getElementById('picker-custom-input');
+    if (inp) { inp.value = cur; }
+    renderPresets();
+    updateSaved();
+    setTimeout(() => inp?.focus(), 300);
+  }
+
+  function close() {
+    const ov = document.getElementById('picker-ov');
+    if (!ov) return;
+    // Wert aus Textfeld übernehmen
+    const inp = document.getElementById('picker-custom-input');
+    const val = inp?.value.trim() || '';
+    setLocation(val);
+    ov.style.display = 'none';
+  }
+
+  function overlayClick(e) {
+    if (e.target === e.currentTarget) close();
+  }
+
+  function setLocation(val) {
+    const hidden  = document.getElementById('f-loc');
+    const trigger = document.getElementById('loc-picker-label');
+    if (hidden)  hidden.value = val;
+    if (trigger) {
+      trigger.textContent = val || 'z.B. Bad, Schlafzimmer…';
+      trigger.style.color = val ? 'var(--text)' : 'var(--text3)';
+    }
+  }
+
+  function selectPreset(val) {
+    const inp = document.getElementById('picker-custom-input');
+    if (inp) inp.value = val;
+    setLocation(val);
+    // Kurz blinken dann schließen
+    setTimeout(close, 120);
+  }
+
+  function onCustomInput() {
+    const val = document.getElementById('picker-custom-input')?.value.trim() || '';
+    setLocation(val);
+  }
+
+  function renderPresets() {
+    const wrap = document.getElementById('picker-presets');
+    if (!wrap) return;
+    wrap.innerHTML = PRESETS.map(p => `
+      <button onclick="Picker.selectPreset('${p}')" style="
+        padding:8px 14px; border-radius:999px; font-size:.82rem; cursor:pointer;
+        background:var(--glass-bg);
+        backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+        border:1px solid var(--glass-border);border-top-color:var(--glass-border-t);
+        box-shadow:var(--glass-shadow-sm);
+        color:var(--text2); font-family:var(--fm);
+        transition:background .13s;
+        white-space:nowrap;
+      ">${p}</button>`).join('');
+  }
+
+  function updateSaved() {
+    const wrap = document.getElementById('picker-saved-wrap');
+    const list = document.getElementById('picker-saved');
+    if (!wrap || !list) return;
+    // Gespeicherte Orte aus App.meds (falls verfügbar)
+    const meds = typeof App !== 'undefined' ? (window._medsForPicker || []) : [];
+    const locs  = [...new Set(meds.map(m => m.location).filter(Boolean))];
+    if (!locs.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    list.innerHTML = locs.map(l => `
+      <button onclick="Picker.selectPreset('${l.replace(/'/g,"\'")}')" style="
+        width:100%; text-align:left; padding:10px 12px; border-radius:var(--glass-radius-sm);
+        font-size:.83rem; cursor:pointer;
+        background:var(--glass-bg);
+        backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+        border:1px solid var(--glass-border);
+        box-shadow:var(--glass-shadow-sm);
+        color:var(--text); font-family:var(--fm);
+        display:flex; align-items:center; gap:8px;
+      "><span style="color:var(--acc);font-size:.75rem">📍</span>${l}</button>`).join('');
+  }
+
+  return { open, close, overlayClick, selectPreset, onCustomInput, updateSaved };
 })();
 </script>
 
