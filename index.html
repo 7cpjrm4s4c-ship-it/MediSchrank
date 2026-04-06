@@ -631,24 +631,21 @@
       gap: 0;
       /* overflow:hidden entfernt — schnitt den Thumb ab */
     }
-    /* Sliding indicator — left-basiert, funktioniert auch bei display:none */
+    /* Sliding indicator — Position via JS gesetzt (exakte Button-Breite) */
     #theme-slider-thumb {
       position: absolute;
       top: 3px; bottom: 3px;
-      left: calc(3px + 0%);
-      width: calc(33.333% - 2px);
+      left: 3px; width: 33%;   /* Initialwert, JS überschreibt */
       border-radius: 999px;
       background: rgba(255,255,255,.18);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255,255,255,.28);
       box-shadow: 0 2px 12px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.2) inset;
-      transition: left .22s cubic-bezier(.34,1.2,.64,1);
+      transition: left .22s cubic-bezier(.34,1.2,.64,1),
+                  width .22s cubic-bezier(.34,1.2,.64,1);
       pointer-events: none;
       z-index: 0;
     }
-    #theme-switcher[data-mode="auto"]  #theme-slider-thumb { left: 3px; }
-    #theme-switcher[data-mode="light"] #theme-slider-thumb { left: calc(33.333% + 1px); }
-    #theme-switcher[data-mode="dark"]  #theme-slider-thumb { left: calc(66.666% - 1px); }
     .theme-btn {
       flex: 1; position: relative; z-index: 1;
       display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -1400,7 +1397,12 @@ const App=(()=>{
     // nb-add immer sichtbar (in Pill Nav integriert)
     if(v==='stats') charts();
     if(v==='settings') {
-      if(typeof Theme!=='undefined') Theme.refreshThumb();
+      if(typeof Theme!=='undefined') {
+        requestAnimationFrame(function() {
+          Theme.refreshThumb();
+          Theme.initDrag();
+        });
+      }
     }
   }
 
@@ -2583,10 +2585,96 @@ const Theme = (() => {
   }
 
   function moveThumb(mode) {
-    // CSS-only: data-mode Attribut auf #theme-switcher setzen
-    // CSS selektiert den Thumb via #theme-switcher[data-mode="x"] #theme-slider-thumb
-    var sw = document.getElementById('theme-switcher');
-    if (sw) sw.setAttribute('data-mode', mode);
+    var sw    = document.getElementById('theme-switcher');
+    var thumb = document.getElementById('theme-slider-thumb');
+    var btn   = document.getElementById('tbtn-' + mode);
+    if (!sw || !thumb || !btn) return;
+    sw.setAttribute('data-mode', mode);
+    var swRect  = sw.getBoundingClientRect();
+    var btnRect = btn.getBoundingClientRect();
+    if (swRect.width > 0) {
+      thumb.style.transition = 'left .22s cubic-bezier(.34,1.2,.64,1), width .22s';
+      thumb.style.left  = (btnRect.left - swRect.left) + 'px';
+      thumb.style.width = btnRect.width + 'px';
+    }
+  }
+
+  /* ── Drag-Slider Initialisierung ─────────────────────────
+     Wird einmalig aufgerufen wenn der Switcher sichtbar ist.
+     Touch-Events direkt auf dem Container — kein Click nötig.
+  ─────────────────────────────────────────────────────── */
+  function initDragSlider() {
+    var sw    = document.getElementById('theme-switcher');
+    var thumb = document.getElementById('theme-slider-thumb');
+    if (!sw || !thumb || sw._dragInit) return;
+    sw._dragInit = true;
+
+    var modes   = ['auto', 'light', 'dark'];
+    var startX  = 0;
+    var startLeft = 0;
+    var dragging  = false;
+    var swRect, btnRects;
+
+    function getRects() {
+      swRect   = sw.getBoundingClientRect();
+      btnRects = modes.map(function(m) {
+        return document.getElementById('tbtn-' + m).getBoundingClientRect();
+      });
+    }
+
+    function snapToNearest(x) {
+      // x = absolute x-Position (pageX)
+      var rel = x - swRect.left; // relativ zum Container
+      var best = 0, bestDist = Infinity;
+      btnRects.forEach(function(r, i) {
+        var center = (r.left - swRect.left) + r.width / 2;
+        var dist = Math.abs(rel - center);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      });
+      return best;
+    }
+
+    sw.addEventListener('touchstart', function(e) {
+      getRects();
+      var t = e.touches[0];
+      startX = t.clientX;
+      startLeft = parseFloat(thumb.style.left) || (btnRects[0].left - swRect.left);
+      dragging = true;
+      // Transition während Drag deaktivieren
+      thumb.style.transition = 'none';
+      e.preventDefault();
+    }, { passive: false });
+
+    sw.addEventListener('touchmove', function(e) {
+      if (!dragging) return;
+      var t  = e.touches[0];
+      var dx = t.clientX - startX;
+      var newLeft = startLeft + dx;
+      // Begrenzen: nicht über Container hinaus
+      var minLeft = btnRects[0].left - swRect.left;
+      var maxLeft = btnRects[2].left - swRect.left;
+      newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+      thumb.style.left = newLeft + 'px';
+      e.preventDefault();
+    }, { passive: false });
+
+    sw.addEventListener('touchend', function(e) {
+      if (!dragging) return;
+      dragging = false;
+      // Zum nächsten Segment snappen
+      var t = e.changedTouches[0];
+      var idx = snapToNearest(t.clientX);
+      // Transition wieder aktivieren für Snap-Animation
+      thumb.style.transition = 'left .22s cubic-bezier(.34,1.2,.64,1), width .22s';
+      Theme.set(modes[idx]);
+    }, { passive: true });
+
+    // Click als Fallback (Desktop / kurzes Tippen)
+    modes.forEach(function(m, i) {
+      document.getElementById('tbtn-' + m).addEventListener('click', function() {
+        Theme.set(m);
+      });
+    });
   }
 
   // Reagiert auf Systemwechsel wenn 'auto' aktiv
@@ -2596,8 +2684,9 @@ const Theme = (() => {
   // Thumb sofort setzen (kein load-Event abwarten nötig bei left-Methode)
   document.addEventListener('DOMContentLoaded', () => moveThumb(current));
 
-  function refreshThumb() { moveThumb(current); }
-  return { load, set, refreshThumb };
+  function refreshThumb() { moveThumb(current); initDragSlider(); }
+  function initDrag() { initDragSlider(); }
+  return { load, set, refreshThumb, initDrag };
 })();
 </script>
 </body>
