@@ -431,18 +431,27 @@
     .nb .ni { font-size: 20px; line-height: 1; }
     .nb:hover { color: var(--text2); }
 
-    /* Active tab: eigene Pill mit Highlight */
+    /* Active tab: Pill Highlight mit Transition für Drag-Snap */
     .nb.active {
       background: rgba(255,255,255,.12);
       color: var(--acc);
-      box-shadow:
-        0 2px 12px rgba(0,0,0,.3),
-        0 1px 0 rgba(255,255,255,.15) inset;
+      box-shadow: 0 2px 12px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.15) inset;
+      transition: color .15s, background .2s, box-shadow .2s;
     }
     :root.light .nb.active {
       background: rgba(255,255,255,.75);
       color: var(--acc);
       box-shadow: 0 2px 10px rgba(80,120,180,.2), 0 1px 0 rgba(255,255,255,.9) inset;
+    }
+    /* Drag-Übergang: .nb.dragging-active = sofortiger Wechsel ohne Transition */
+    .nb.dragging-active {
+      background: rgba(255,255,255,.12);
+      color: var(--acc);
+      transition: none;
+    }
+    :root.light .nb.dragging-active {
+      background: rgba(255,255,255,.75);
+      color: var(--acc);
     }
 
     /* Add-Button: identisch zu anderen Tabs, kein Rahmen */
@@ -457,18 +466,7 @@
       line-height: 1;
     }
 
-    /* ── Nav Active Tab Highlight ──────────────────────── */
-    /* Aktiver Tab via .nb.active Klasse — kein separater Thumb */
-    .nb.active {
-      background: rgba(255,255,255,.12);
-      color: var(--acc);
-      box-shadow: 0 2px 12px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.15) inset;
-    }
-    :root.light .nb.active {
-      background: rgba(255,255,255,.75);
-      color: var(--acc);
-      box-shadow: 0 2px 10px rgba(80,120,180,.2), 0 1px 0 rgba(255,255,255,.9) inset;
-    }
+
 
     /* ── Modal ─────────────────────────────────────────── */
     .ov { display: none; position: fixed; inset: 0; background: var(--scan-overlay); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 500; align-items: flex-end; justify-content: center; }
@@ -2165,29 +2163,43 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
   var TABS    = ['list', 'stats', 'settings'];
   var TAB_IDS = ['nb-list', 'nb-stats', 'nb-settings'];
   var ADD_ID  = 'nb-add';
-  var dragging = false, startX = 0, currentIdx = 0;
 
-  function getTabBtn(id) { return document.getElementById(id); }
+  var dragging  = false;
+  var startX    = 0;
+  var currentIdx = 0;
+  var liveIdx    = 0; // Index der während Drag hervorgehoben wird
 
-  function activateTab(idx) {
-    currentIdx = idx;
-    TABS.forEach(function(t, i) {
-      var btn = getTabBtn('nb-' + t);
-      if (btn) btn.classList.toggle('active', i === idx);
+  function btn(id) { return document.getElementById(id); }
+
+  // Setzt den visuell aktiven Tab — optional ohne Transition (beim Drag)
+  function highlight(idx, instant) {
+    TAB_IDS.forEach(function(id, i) {
+      var b = btn(id);
+      if (!b) return;
+      b.classList.remove('active', 'dragging-active');
+      if (i === idx) {
+        b.classList.add(instant ? 'dragging-active' : 'active');
+      }
     });
   }
 
-  function snapToNearest(clientX) {
+  // Welcher Tab ist an X-Koordinate (clientX)?
+  function idxAtX(clientX) {
     var best = currentIdx, bestDist = Infinity;
     TAB_IDS.forEach(function(id, i) {
-      var btn = getTabBtn(id);
-      if (!btn) return;
-      var r = btn.getBoundingClientRect();
-      var center = r.left + r.width / 2;
-      var dist = Math.abs(clientX - center);
+      var b = btn(id);
+      if (!b) return;
+      var r = b.getBoundingClientRect();
+      var dist = Math.abs(clientX - (r.left + r.width / 2));
       if (dist < bestDist) { bestDist = dist; best = i; }
     });
     return best;
+  }
+
+  function commit(idx) {
+    currentIdx = idx;
+    highlight(idx, false); // mit Transition einrasten
+    App.view(TABS[idx]);
   }
 
   function init() {
@@ -2195,17 +2207,30 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
     if (!nav || nav._dragInit) return;
     nav._dragInit = true;
 
+    // Startposition aus aktuell aktivem Tab
+    TAB_IDS.forEach(function(id, i) {
+      if (btn(id) && btn(id).classList.contains('active')) currentIdx = i;
+    });
+
     nav.addEventListener('touchstart', function(e) {
       var target = e.target.closest('.nb');
+      // Nur auf navigierbaren Tabs starten, nicht Add-Button
       if (!target || target.id === ADD_ID) return;
-      startX = e.touches[0].clientX;
+      startX   = e.touches[0].clientX;
+      liveIdx  = currentIdx;
       dragging = true;
     }, { passive: true });
 
     nav.addEventListener('touchmove', function(e) {
       if (!dragging) return;
-      // Seiten-Scroll verhindern während Drag auf Nav
-      e.preventDefault();
+      var x   = e.touches[0].clientX;
+      var idx = idxAtX(x);
+      // Live-Highlight ohne Transition während Finger bewegt wird
+      if (idx !== liveIdx) {
+        liveIdx = idx;
+        highlight(idx, true);
+      }
+      e.preventDefault(); // Seiten-Scroll verhindern
     }, { passive: false });
 
     nav.addEventListener('touchend', function(e) {
@@ -2214,19 +2239,17 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
       var endX = e.changedTouches[0].clientX;
       var dx   = endX - startX;
 
-      // Swipe-Richtung erkennen (> 30px = intentionaler Swipe)
-      if (Math.abs(dx) > 30) {
-        var newIdx = dx < 0
+      var newIdx;
+      if (Math.abs(dx) > 25) {
+        // Intentionaler Swipe: Richtung
+        newIdx = dx < 0
           ? Math.min(currentIdx + 1, TABS.length - 1)
           : Math.max(currentIdx - 1, 0);
-        activateTab(newIdx);
-        App.view(TABS[newIdx]);
       } else {
-        // Kurzes Tippen — nächsten Tab per Position bestimmen
-        var idx = snapToNearest(endX);
-        activateTab(idx);
-        App.view(TABS[idx]);
+        // Tap: nächster Tab zur Finger-Position
+        newIdx = idxAtX(endX);
       }
+      commit(newIdx);
     }, { passive: true });
   }
 
@@ -2234,12 +2257,15 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
     init: init,
     moveToTab: function(v) {
       var idx = TABS.indexOf(v);
-      if (idx >= 0) activateTab(idx);
+      if (idx >= 0) {
+        currentIdx = idx;
+        highlight(idx, false);
+      }
     }
   };
 
   document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(init, 150);
+    setTimeout(init, 200);
   });
 })();
 </script>
