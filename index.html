@@ -119,6 +119,11 @@
       -webkit-text-size-adjust: 100%;
     }
 
+    /* Kein blauer Focus-Ring auf iOS/Safari */
+    button:focus, button:focus-visible { outline: none !important; box-shadow: none !important; }
+    button { -webkit-tap-highlight-color: transparent; }
+    a:focus { outline: none; }
+
     /* ── Liquid Glass Hintergrund-Orbs ──────────────────── */
     body::before, body::after {
       content: '';
@@ -609,28 +614,38 @@
       gap: 0;
       overflow: hidden; /* thumb bleibt in der Pill */
     }
-    /* Sliding indicator */
+    /* Sliding indicator — via CSS transform, kein JS-Maß nötig */
     #theme-slider-thumb {
       position: absolute;
       top: 3px; bottom: 3px;
+      left: 3px;                      /* Startposition */
+      width: calc(33.333% - 2px);     /* Immer 1/3 der Breite */
       border-radius: 999px;
-      background: var(--glass-bg-hover);
+      background: rgba(255,255,255,.11);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--glass-border-t);
-      box-shadow: var(--glass-shadow-sm);
-      transition: left .22s cubic-bezier(.34,1.2,.64,1), width .22s cubic-bezier(.34,1.2,.64,1);
+      border: 1px solid rgba(255,255,255,.18);
+      box-shadow: 0 2px 8px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.12) inset;
+      transform: translateX(0);
+      transition: transform .22s cubic-bezier(.34,1.2,.64,1);
       pointer-events: none;
       z-index: 0;
     }
+    /* Positionen per CSS-Klasse auf dem Parent */
+    #theme-switcher[data-mode="auto"]  #theme-slider-thumb { transform: translateX(0); }
+    #theme-switcher[data-mode="light"] #theme-slider-thumb { transform: translateX(100%); }
+    #theme-switcher[data-mode="dark"]  #theme-slider-thumb { transform: translateX(200%); }
     .theme-btn {
       flex: 1; position: relative; z-index: 1;
       display: flex; align-items: center; justify-content: center; gap: 6px;
       background: none; border: none; border-radius: 999px;
-      padding: 8px 6px; cursor: pointer;
+      padding: 9px 6px; cursor: pointer;
+      outline: none; /* kein blauer Focus-Ring */
+      -webkit-tap-highlight-color: transparent;
       transition: color .18s;
       color: var(--text3); font-family: var(--fm);
       white-space: nowrap;
     }
+    .theme-btn:focus { outline: none; }
     .theme-btn:active { transform: scale(.96); }
     .theme-btn.active { color: var(--text); }
     .tbtn-ico { font-size: 1rem; line-height: 1; }
@@ -646,25 +661,6 @@
     }
 
     /* ── Lock Screen ───────────────────────────────────── */
-    /* ── Theme Switcher Buttons ───────────────────────── */
-    /* theme-btn — siehe Segmented Slider oben */
-
-
-    /* ── Theme Switcher Buttons ─────────────────────── */
-    .theme-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 5px;
-      background: var(--surf2); border: 1.5px solid var(--bd);
-      border-radius: var(--r); padding: 10px 8px; cursor: pointer;
-      transition: border-color .15s, background .15s, transform .1s;
-      color: var(--text2); font-family: var(--fm);
-    }
-    .theme-btn:hover  { border-color: var(--bdh); background: var(--surf); }
-    .theme-btn:active { transform: scale(.96); }
-    .theme-btn.active {
-      border-color: var(--acc); background: rgba(94,184,245,.08); color: var(--acc);
-    }
-    .tbtn-ico { font-size: 1.3rem; line-height: 1; }
-    .tbtn-lbl { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; }
 
     #lock-screen {
       display: none; /* shown by Auth.show() */
@@ -1383,10 +1379,7 @@ const App=(()=>{
     // nb-add immer sichtbar (in Pill Nav integriert)
     if(v==='stats') charts();
     if(v==='settings') {
-      // Zwei Frames warten — Safari braucht das um Maße nach display-Wechsel zu liefern
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        if(typeof Theme!=='undefined') Theme.refreshThumb();
-      }));
+      if(typeof Theme!=='undefined') Theme.refreshThumb();
     }
   }
 
@@ -2571,48 +2564,18 @@ const Theme = (() => {
   }
 
   function moveThumb(mode) {
-    const thumb  = document.getElementById('theme-slider-thumb');
-    const active = document.getElementById('tbtn-' + mode);
-    if (!thumb || !active) return;
-
-    // offsetLeft/offsetWidth funktionieren auch wenn view-settings display:none ist
-    // da wir relativ zum Parent messen
-    const parent = active.parentElement;
-    if (!parent) return;
-
-    // Kurz sichtbar machen falls nötig um Maße zu ermitteln
-    const wasHidden = parent.offsetParent === null;
-    if (wasHidden) {
-      parent.style.visibility = 'hidden';
-      parent.style.position   = 'fixed';
-      parent.style.display    = 'flex';
-    }
-
-    const l = active.offsetLeft;
-    const w = active.offsetWidth;
-
-    if (wasHidden) {
-      parent.style.visibility = '';
-      parent.style.position   = '';
-      parent.style.display    = '';
-    }
-
-    if (w > 0) {
-      thumb.style.left  = l + 'px';
-      thumb.style.width = w + 'px';
-    }
+    // CSS-only: data-mode Attribut auf #theme-switcher setzen
+    // CSS selektiert den Thumb via #theme-switcher[data-mode="x"] #theme-slider-thumb
+    var sw = document.getElementById('theme-switcher');
+    if (sw) sw.setAttribute('data-mode', mode);
   }
 
   // Reagiert auf Systemwechsel wenn 'auto' aktiv
   window.matchMedia('(prefers-color-scheme: light)')
     .addEventListener('change', () => { if (current === 'auto') apply('auto', true); });
 
-  // Thumb nach Render positionieren (DOM braucht einen Frame)
-  window.addEventListener('load', () => {
-    requestAnimationFrame(() => moveThumb(current));
-  });
-  // Auch beim Resize (iPad Rotation)
-  window.addEventListener('resize', () => moveThumb(current));
+  // Thumb initial setzen
+  window.addEventListener('load', () => moveThumb(current));
 
   function refreshThumb() { moveThumb(current); }
   return { load, set, refreshThumb };
