@@ -105,8 +105,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     html, body {
-      height: 100%;
-      /* Block horizontal overflow / scroll on iOS */
+      /* Kein height:100% — sonst scrollt window nie auf iOS PWA */
       overflow-x: hidden;
       overscroll-behavior-x: none;
     }
@@ -157,19 +156,21 @@
       display: flex; flex-direction: column;
       min-height: 100dvh;
       max-width: 680px; margin: 0 auto;
-      overflow-x: hidden; /* hard block */
+      overflow-x: hidden;
+      /* overflow-y: visible → window übernimmt das Scrollen */
     }
 
     /* ── Header ────────────────────────────────────────── */
     header {
-      position: sticky; top: 0; z-index: 100;
+      position: fixed; top: 0; left: 0; right: 0;
+      max-width: 680px; margin: 0 auto;
+      z-index: 100;
       background: var(--hdr-bg);
       backdrop-filter: blur(28px) saturate(1.6); -webkit-backdrop-filter: blur(28px) saturate(1.6);
       border-bottom: 1px solid var(--glass-border);
       box-shadow: 0 1px 0 var(--glass-shine), 0 4px 20px rgba(0,0,0,.2);
       padding: env(safe-area-inset-top,10px) 18px 12px;
-      /* Fade beim Scrollen — kein Verschieben */
-      transition: opacity .22s ease;
+      transition: opacity .3s ease;
       will-change: opacity;
     }
     header.hidden {
@@ -191,16 +192,28 @@
     /* ── Alert Banner ──────────────────────────────────── */
     #alert-banner {
       display: none;
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 0px) + 58px);
+      left: 0; right: 0;
+      max-width: 680px; margin: 0 auto;
+      z-index: 99;
       background: rgba(240,112,112,.08);
       backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid rgba(240,112,112,.2);
-      box-shadow: 0 1px 0 rgba(240,112,112,.08) inset;
       padding: 10px 18px; font-size: .73rem; color: var(--danger); cursor: pointer;
     }
+    /* main padding-top anpassen wenn Banner sichtbar */
+    #alert-banner[style*="block"] ~ main,
+    body.has-alert main { padding-top: calc(env(safe-area-inset-top, 0px) + 94px); }
 
     /* ── Offline Pill ──────────────────────────────────── */
     #offline-pill {
       display: none;
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 0px) + 58px);
+      left: 0; right: 0;
+      max-width: 680px; margin: 0 auto;
+      z-index: 98;
       background: var(--glass-bg);
       backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--glass-border);
@@ -404,7 +417,9 @@
 
     /* Verhindert dass Inhalt hinter der floating Nav verschwindet */
     main {
-      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+      padding-top: calc(env(safe-area-inset-top, 0px) + 58px);
+      /* Nav-Höhe ~56px + safe-area + 16px Luft */
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
     }
 
     .nb {
@@ -1357,8 +1372,14 @@ const App=(()=>{
   function updateBanner(){
     const ex=meds.filter(m=>['warn','danger','expired'].includes(status(m.mhd)));
     const b=document.getElementById('alert-banner');
-    if(ex.length){b.innerHTML=`⚠️ ${ex.length} Medikament${ex.length===1?'':'e'}: Mindesthaltbarkeitsdatum demnächst abgelaufen — tippen`;b.style.display='block';}
-    else b.style.display='none';
+    if(ex.length){
+      b.innerHTML=`⚠️ ${ex.length} Medikament${ex.length===1?'':'e'}: Mindesthaltbarkeitsdatum demnächst abgelaufen — tippen`;
+      b.style.display='block';
+      document.body.classList.add('has-alert');
+    } else {
+      b.style.display='none';
+      document.body.classList.remove('has-alert');
+    }
   }
 
   function gotoExpiring(){view('list');window.scrollTo({top:0,behavior:'smooth'});}
@@ -2099,26 +2120,34 @@ iCloud Drive / MediSchrank / liegen.
 
 document.addEventListener('DOMContentLoaded', () => Auth.init());
 
-/* ── Header Fade beim Scrollen ───────────────────────────
-   Nutzt einen unsichtbaren Sentinel-Div am Seitenanfang.
-   IntersectionObserver ist auf iOS zuverlässiger als scroll events.
-   Wenn der Sentinel nicht mehr sichtbar ist → Header ausblenden.
-──────────────────────────────────────────────────────── */
+/* ── Header Fade beim Scrollen ─────────────────────────── */
 (function() {
   var header = document.querySelector('header');
   if (!header) return;
+  var prev = 0;
 
-  // Sentinel: unsichtbarer Marker 80px unter dem Seitenanfang
-  var sentinel = document.createElement('div');
-  sentinel.style.cssText = 'position:absolute;top:80px;left:0;width:1px;height:1px;pointer-events:none;';
-  document.body.appendChild(sentinel);
+  function getScrollY() {
+    // Alle möglichen Scroll-Container abfragen
+    return window.scrollY
+        || window.pageYOffset
+        || document.documentElement.scrollTop
+        || document.body.scrollTop
+        || 0;
+  }
 
-  var observer = new IntersectionObserver(function(entries) {
-    var isVisible = entries[0].isIntersecting;
-    header.classList.toggle('hidden', !isVisible);
-  }, { threshold: 0 });
+  function onScroll() {
+    var y = getScrollY();
+    if (y > 60 && y > prev) {
+      header.classList.add('hidden');
+    } else if (y < prev || y <= 60) {
+      header.classList.remove('hidden');
+    }
+    prev = y;
+  }
 
-  observer.observe(sentinel);
+  // Scroll auf window UND document (iOS PWA manchmal unterschiedlich)
+  window.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('scroll', onScroll, { passive: true });
 })();
 </script>
 
