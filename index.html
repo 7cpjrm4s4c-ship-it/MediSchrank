@@ -362,7 +362,11 @@
     /* ── Floating Pill Nav (Apple Music Style) ─────────── */
     nav {
       position: fixed;
-      bottom: max(env(safe-area-inset-bottom,0px), 8px);
+      /* Apple-Spec: direkt über Home Indicator = safe-area-inset-bottom
+         Im PWA (Home Screen): 34px (Face ID iPhone) = korrekt
+         Im Safari Browser: 0px → Pill sitzt am unteren Bildschirmrand
+         Kein extra Offset nötig — das ist genau wie Apple Music */
+      bottom: env(safe-area-inset-bottom, 0px);
       left: 50%; transform: translateX(-50%);
       width: calc(min(100vw, 680px) - 32px);
       z-index: 150;
@@ -400,7 +404,7 @@
 
     /* Verhindert dass Inhalt hinter der floating Nav verschwindet */
     main {
-      padding-bottom: calc(max(env(safe-area-inset-bottom,0px), 8px) + 72px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
     }
 
     .nb {
@@ -572,7 +576,7 @@
     .ca .btn { flex: 1; padding: 10px; }
 
     /* ── Toasts ────────────────────────────────────────── */
-    #toasts { position: fixed; bottom: calc(max(env(safe-area-inset-bottom,0px), 8px) + 76px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 7px; z-index: 900; width: min(88vw,360px); pointer-events: none; }
+    #toasts { position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 80px); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 7px; z-index: 900; width: min(88vw,360px); pointer-events: none; }
     .toast {
       background: var(--glass-bg);
       backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
@@ -2095,32 +2099,26 @@ iCloud Drive / MediSchrank / liegen.
 
 document.addEventListener('DOMContentLoaded', () => Auth.init());
 
-/* ── Header Scroll-Away ───────────────────────────────────
-   Header verschwindet beim Runterscrollen, erscheint beim
-   Raufscrollen — wie native iOS Apps.
-   Threshold: 60px damit kurze Scrolls nichts triggern.
+/* ── Header Fade beim Scrollen ───────────────────────────
+   Nutzt einen unsichtbaren Sentinel-Div am Seitenanfang.
+   IntersectionObserver ist auf iOS zuverlässiger als scroll events.
+   Wenn der Sentinel nicht mehr sichtbar ist → Header ausblenden.
 ──────────────────────────────────────────────────────── */
 (function() {
-  let lastY = 0, ticking = false;
-  const THRESHOLD = 60;
+  var header = document.querySelector('header');
+  if (!header) return;
 
-  window.addEventListener('scroll', () => {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(() => {
-      const y      = window.scrollY;
-      const header = document.querySelector('header');
-      if (!header) { ticking = false; return; }
+  // Sentinel: unsichtbarer Marker 80px unter dem Seitenanfang
+  var sentinel = document.createElement('div');
+  sentinel.style.cssText = 'position:absolute;top:80px;left:0;width:1px;height:1px;pointer-events:none;';
+  document.body.appendChild(sentinel);
 
-      if (y > lastY && y > THRESHOLD) {
-        header.classList.add('hidden');
-      } else if (y <= THRESHOLD || y < lastY) {
-        header.classList.remove('hidden');
-      }
-      lastY   = y;
-      ticking = false;
-    });
-  }, { passive: true });
+  var observer = new IntersectionObserver(function(entries) {
+    var isVisible = entries[0].isIntersecting;
+    header.classList.toggle('hidden', !isVisible);
+  }, { threshold: 0 });
+
+  observer.observe(sentinel);
 })();
 </script>
 
