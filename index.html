@@ -629,7 +629,7 @@
       border-radius: 999px;
       padding: 3px;
       gap: 0;
-      overflow: hidden; /* thumb bleibt in der Pill */
+      /* overflow:hidden entfernt — schnitt den Thumb ab */
     }
     /* Sliding indicator — left-basiert, funktioniert auch bei display:none */
     #theme-slider-thumb {
@@ -638,10 +638,10 @@
       left: calc(3px + 0%);
       width: calc(33.333% - 2px);
       border-radius: 999px;
-      background: rgba(255,255,255,.11);
+      background: rgba(255,255,255,.18);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,.18);
-      box-shadow: 0 2px 8px rgba(0,0,0,.3), 0 1px 0 rgba(255,255,255,.12) inset;
+      border: 1px solid rgba(255,255,255,.28);
+      box-shadow: 0 2px 12px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.2) inset;
       transition: left .22s cubic-bezier(.34,1.2,.64,1);
       pointer-events: none;
       z-index: 0;
@@ -826,7 +826,7 @@
             <span id="theme-icon" style="font-size:1.1rem">🌙</span>
             <span class="srt" style="font-size:.82rem">Erscheinungsbild</span>
           </div>
-          <div id="theme-switcher">
+          <div id="theme-switcher" data-mode="auto">
             <div id="theme-slider-thumb"></div>
             <button class="theme-btn" id="tbtn-auto"  onclick="Theme.set('auto')">
               <span class="tbtn-ico">⚙️</span><span class="tbtn-lbl">Auto</span>
