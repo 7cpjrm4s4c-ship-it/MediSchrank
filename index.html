@@ -1004,7 +1004,7 @@
         </div>
       </div>
       <div class="ss">
-        <div class="sr"><div class="srl"><span class="srt">Version</span><span class="srs">MediSchrank PWA v2.0</span></div><span style="font-size:.67rem;color:var(--text3)">2.0.0</span></div>
+        <div class="sr"><div class="srl"><span class="srt">Version</span><span class="srs">MediSchrank PWA</span></div><span style="font-size:.67rem;color:var(--text3)">13.1</span></div>
         <div class="sr"><div class="srl"><span class="srt">Service Worker</span><span class="srs">Offline-Cache Status</span></div><span id="sw-st" style="font-size:.67rem;color:var(--text3)">–</span></div>
         <div class="sr"><div class="srl"><span class="srt">Datenbank</span><span class="srs">IndexedDB</span></div><span id="idb-st" style="font-size:.67rem;color:var(--text3)">–</span></div>
       </div>
@@ -1153,12 +1153,12 @@
    </div>
 
    <!-- MHD + Geöffnet am -->
-   <div class="r2" style="margin-bottom:12px">
-    <div class="fg" style="margin-bottom:0">
+   <div style="display:flex;gap:12px;margin-bottom:12px">
+    <div class="fg" style="margin-bottom:0;flex:0 0 calc(50% - 6px);max-width:calc(50% - 6px)">
      <label>MHD (MM/JJJJ) *</label>
      <input type="month" id="f-mhd" />
     </div>
-    <div class="fg" style="margin-bottom:0">
+    <div class="fg" style="margin-bottom:0;flex:0 0 calc(50% - 6px);max-width:calc(50% - 6px)">
      <label>Geöffnet am</label>
      <input type="date" id="f-opened" onchange="App.updateOpenedHint()" />
     </div>
