@@ -550,6 +550,21 @@
       padding: 11px 12px;
       height: auto;
       line-height: 1.25;
+      /* iOS rendert date/month mit internem Picker-Bereich —
+         min-height verhindert dass es größer wird als text-Inputs */
+      min-height: 0;
+      box-sizing: border-box;
+      display: block;
+    }
+    /* Picker-Icon klein halten */
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="month"]::-webkit-calendar-picker-indicator {
+      filter: invert(.45);
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      margin: 0;
+      opacity: 0.7;
     }
     textarea {
       padding: 11px 12px;
@@ -566,7 +581,6 @@
       box-shadow: 0 2px 8px rgba(0,0,0,.2), 0 0 0 3px rgba(94,184,245,.15), 0 1px 0 var(--glass-shine) inset;
     }
     input::placeholder { color: var(--text3); }
-    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.45); }
     select option { background: var(--bg2); }
 
     .r2 { display: flex; gap: 12px; }
