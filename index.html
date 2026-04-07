@@ -248,23 +248,30 @@
     .stat-v.w { color: var(--warn); } .stat-v.d { color: var(--danger); }
 
     /* ── Section ───────────────────────────────────────── */
-    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; margin-top: 18px; }
     .sec-ttl { font-family: var(--fh); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text3); }
 
     /* ── Search ────────────────────────────────────────── */
     .sw { position: relative; margin-bottom: 10px; }
-    .si { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; pointer-events: none; }
+    .si {
+      position: absolute; left: 12px;
+      top: 0; bottom: 0;
+      display: flex; align-items: center;
+      color: var(--text3); font-size: 13px; pointer-events: none;
+    }
     #search {
       width: 100%;
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid var(--glass-border);
       border-radius: var(--glass-radius-sm);
-      padding: 10px 14px 10px 36px;
-      line-height: 1.2;
-      font-family: var(--fm); font-size: 1rem; color: var(--text); outline: none;
+      padding: 11px 14px 11px 36px;
+      font-family: var(--fm); font-size: 1rem;
+      line-height: normal;
+      color: var(--text); outline: none;
       box-shadow: var(--glass-shadow-sm);
       transition: border-color .2s, box-shadow .2s, background .2s;
+      -webkit-appearance: none;
     }
     #search::placeholder { color: var(--text3); }
     #search:focus { border-color: var(--acc); background: var(--glass-bg-hover); box-shadow: var(--glass-shadow), 0 0 0 3px rgba(94,184,245,.12); }
@@ -478,7 +485,7 @@
 
 
     /* ── Modal ─────────────────────────────────────────── */
-    .ov { display: none; position: fixed; inset: 0; background: var(--scan-overlay); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 500; align-items: flex-end; justify-content: center; }
+    .ov { display: none; position: fixed; inset: 0; background: var(--scan-overlay); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 500; align-items: flex-end; justify-content: center; padding-bottom: calc(max(env(safe-area-inset-bottom,0px),8px) + 72px + 16px); }
     .ov.open { display: flex; }
     .modal {
       background: var(--glass-bg);
@@ -488,8 +495,8 @@
       border-radius: var(--glass-radius) var(--glass-radius) 0 0;
       box-shadow: 0 -8px 40px rgba(0,0,0,.5), 0 1px 0 var(--glass-border-t) inset;
       width: 100%; max-width: 680px;
-      /* 16px Abstand zur Nav (ca. 72px) + safe-area */
-      max-height: calc(100dvh - max(env(safe-area-inset-bottom,0px),8px) - 72px - 16px);
+      /* 16px vom oberen Rand, endet 16px über der Nav */
+      max-height: calc(100dvh - 16px - max(env(safe-area-inset-bottom,0px),8px) - 72px - 16px);
       overflow-y: auto;
       animation: sup .28s cubic-bezier(.34,1.56,.64,1);
     }
@@ -1101,14 +1108,14 @@
    </div>
 
    <!-- MHD + Geöffnet am -->
-   <div class="r2">
-    <div class="fg" style="margin-bottom:0">
-     <label>Mindesthaltbarkeitsdatum *</label>
-     <input type="date" id="f-mhd" />
+   <div class="r2" style="align-items:stretch">
+    <div class="fg" style="margin-bottom:0;display:flex;flex-direction:column">
+     <label>MHD (MM/JJJJ) *</label>
+     <input type="month" id="f-mhd" style="flex:1" />
     </div>
-    <div class="fg" style="margin-bottom:0">
+    <div class="fg" style="margin-bottom:0;display:flex;flex-direction:column">
      <label>Geöffnet am</label>
-     <input type="date" id="f-opened" onchange="App.updateOpenedHint()" />
+     <input type="date" id="f-opened" onchange="App.updateOpenedHint()" style="flex:1" />
     </div>
    </div>
    <div class="fg" id="opened-hint" style="display:none;margin-top:6px">
@@ -1337,22 +1344,33 @@ const App=(()=>{
 
   /* MHD */
   function status(mhd){
-    if(!mhd) return 'ok';
-    const t=new Date();t.setHours(0,0,0,0);
-    const d=Math.floor((new Date(mhd)-t)/86400000);
-    if(d<0) return 'expired';
-    if(d<=7) return 'danger';
-    if(d<=Cfg.get().days) return 'warn';
-    return 'ok';
+    if(!mhd)return'ok';
+    let d;
+    if(mhd.length===7){
+      // YYYY-MM: letzter Tag des Monats
+      const p=mhd.split('-');
+      d=new Date(parseInt(p[0]), parseInt(p[1]), 0);
+    } else {
+      d=new Date(mhd);
+    }
+    const now=new Date(); now.setHours(0,0,0,0);
+    const diff=Math.floor((d-now)/86400000);
+    const days=Cfg.get().days;
+    if(diff<0)return'expired';
+    if(diff<=3)return'danger';
+    if(diff<=days)return'warn';
+    return'ok';
   }
   function label(mhd){
-    if(!mhd) return '– kein MHD';
-    const t=new Date();t.setHours(0,0,0,0);
-    const d=Math.floor((new Date(mhd)-t)/86400000);
-    if(d<0)  return `Abgelaufen (${Math.abs(d)}d)`;
-    if(d===0) return 'Läuft heute ab!';
-    if(d<=7)  return `Noch ${d} Tag${d===1?'':'e'}!`;
-    return new Date(mhd).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    if(!mhd)return'kein MHD';
+    // YYYY-MM (type=month) → MM.YYYY
+    if(mhd.length===7){
+      const parts=mhd.split('-');
+      return parts[1]+'.'+parts[0];
+    }
+    const d=new Date(mhd);
+    if(isNaN(d))return mhd;
+    return d.toLocaleDateString('de-DE',{month:'2-digit',year:'numeric',day:'2-digit'});
   }
 
   /* RENDER */
@@ -1474,7 +1492,14 @@ const App=(()=>{
   }
 
   /* MODAL */
-  function openAdd(){editId=null;document.getElementById('mttl').textContent='💊 Medikament erfassen';clearForm();document.getElementById('ov-add').classList.add('open');}
+  function openAdd(){
+    editId=null;
+    document.getElementById('mttl').textContent='💊 Medikament erfassen';
+    clearForm();
+    document.getElementById('ov-add').classList.add('open');
+    // Thumb zeigt auf + Button
+    if(typeof NavSlider!=='undefined') NavSlider.showAdd();
+  }
   function openEdit(id){
     editId=id;const m=meds.find(x=>x.id===id);if(!m)return;
     document.getElementById('mttl').textContent='✏️ Medikament bearbeiten';
@@ -1487,7 +1512,13 @@ const App=(()=>{
     document.getElementById('lk-btn').style.display=m.barcode?'block':'none';
     document.getElementById('ov-add').classList.add('open');
   }
-  function closeModal(){stopScan();document.getElementById('ov-add').classList.remove('open');clearForm();editId=null;}
+  function closeModal(){
+    stopScan();
+    document.getElementById('ov-add').classList.remove('open');
+    clearForm();editId=null;
+    // Thumb zurück zum aktuellen View
+    if(typeof NavSlider!=='undefined') NavSlider.moveToTab(window._currentView||'list');
+  }
   function ovClick(e){if(e.target===e.currentTarget)closeModal();}
   function clearForm(){
     ['barcode','name','loc','mhd','opened','qty','brand','pzn','notes'].forEach(f=>{
@@ -2333,9 +2364,22 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
       if (tabIdx < 0) return;
       currentIdx = tabIdx;
       setActive(v);
-      // allIdx: überspringe Add-Button
       var allIdx = tabIdx >= ADD_IDX ? tabIdx + 1 : tabIdx;
       requestAnimationFrame(function() { moveThumbTo(allIdx, true); });
+    },
+    showAdd: function() {
+      // Thumb auf den Add-Button bewegen ohne View zu wechseln
+      requestAnimationFrame(function() {
+        if (!getRects()) return;
+        moveThumbTo(ADD_IDX, true);
+        // Add-Button kurz hervorheben
+        var addBtn = document.getElementById('nb-add');
+        if (addBtn) { addBtn.style.color = 'var(--acc)'; }
+        setTimeout(function() {
+          var addBtn = document.getElementById('nb-add');
+          if (addBtn) addBtn.style.color = '';
+        }, 1200);
+      });
     }
   };
 
