@@ -527,7 +527,7 @@
     }
 
     /* ── Form ──────────────────────────────────────────── */
-    .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; overflow: hidden; }
     label { font-size: .63rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); }
 
     /* ALLE Inputs 16px = 1rem → Safari zoomt nie! */
@@ -537,32 +537,27 @@
     input[type="number"],
     input[type="time"],
     select, textarea {
+      box-sizing: border-box; /* verhindert Überlauf bei width:100% */
       width: 100%;
+      max-width: 100%; /* iOS Safari Fallback */
       background: var(--glass-bg);
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--glass-border);
       border-radius: var(--glass-radius-sm);
-      font-family: var(--fm); font-size: 1rem; /* 16px – critical */
+      padding: 11px 12px;
+      font-family: var(--fm); font-size: 1rem;
       color: var(--text); outline: none;
       box-shadow: 0 2px 8px rgba(0,0,0,.2), 0 1px 0 var(--glass-shine) inset;
       transition: border-color .2s, box-shadow .2s, background .2s;
-    }
-    /* Einheitliches Padding + Cursor-Fix: display:flex auf Wrapper statt padding-Trick */
-    input[type="text"], input[type="number"], input[type="time"] {
-      padding: 11px 12px;
-      height: auto;
-      line-height: 1.25;
       -webkit-appearance: none; appearance: none;
     }
-    input[type="date"], input[type="month"] {
-      padding: 11px 12px;
-      height: auto;
+    input[type="text"], input[type="number"], input[type="time"] {
       line-height: 1.25;
-      /* iOS rendert date/month mit internem Picker-Bereich —
-         min-height verhindert dass es größer wird als text-Inputs */
-      min-height: 0;
-      box-sizing: border-box;
-      display: block;
+    }
+    input[type="date"], input[type="month"] {
+      line-height: 1.25;
+      /* type=date/month: appearance none entfernen damit iOS Picker funktioniert */
+      -webkit-appearance: auto; appearance: auto;
     }
     /* Picker-Icon klein halten */
     input[type="date"]::-webkit-calendar-picker-indicator,
