@@ -259,8 +259,9 @@
       background: var(--glass-bg);
       backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid var(--glass-border);
-      border-radius: var(--glass-radius);
-      padding: 12px 14px 12px 36px;
+      border-radius: var(--glass-radius-sm);
+      padding: 10px 14px 10px 36px;
+      line-height: 1.2;
       font-family: var(--fm); font-size: 1rem; color: var(--text); outline: none;
       box-shadow: var(--glass-shadow-sm);
       transition: border-color .2s, box-shadow .2s, background .2s;
@@ -486,7 +487,10 @@
       border-top-color: var(--glass-border-t);
       border-radius: var(--glass-radius) var(--glass-radius) 0 0;
       box-shadow: 0 -8px 40px rgba(0,0,0,.5), 0 1px 0 var(--glass-border-t) inset;
-      width: 100%; max-width: 680px; max-height: 93dvh; overflow-y: auto;
+      width: 100%; max-width: 680px;
+      /* 16px Abstand zur Nav (ca. 72px) + safe-area */
+      max-height: calc(100dvh - max(env(safe-area-inset-bottom,0px),8px) - 72px - 16px);
+      overflow-y: auto;
       animation: sup .28s cubic-bezier(.34,1.56,.64,1);
     }
     @keyframes sup { from{transform:translateY(50px);opacity:0} to{transform:translateY(0);opacity:1} }
@@ -1096,10 +1100,19 @@
     <input type="hidden" id="f-loc" />
    </div>
 
-   <!-- MHD -->
-   <div class="fg">
-    <label>Mindesthaltbarkeitsdatum *</label>
-    <input type="date" id="f-mhd" />
+   <!-- MHD + Geöffnet am -->
+   <div class="r2">
+    <div class="fg" style="margin-bottom:0">
+     <label>Mindesthaltbarkeitsdatum *</label>
+     <input type="date" id="f-mhd" />
+    </div>
+    <div class="fg" style="margin-bottom:0">
+     <label>Geöffnet am</label>
+     <input type="date" id="f-opened" onchange="App.updateOpenedHint()" />
+    </div>
+   </div>
+   <div class="fg" id="opened-hint" style="display:none;margin-top:6px">
+    <span style="font-size:.65rem;color:var(--warn);line-height:1.5" id="opened-hint-text"></span>
    </div>
 
    <!-- Menge / Hersteller -->
@@ -1358,7 +1371,7 @@ const App=(()=>{
           <div class="mc-name">${h(m.name)}${m.brand?`<small>${h(m.brand)}</small>`:''}</div>
           <div class="mc-meta">
             ${m.location?`<span class="tag tl">📍 ${h(m.location)}</span>`:''}
-            ${m.barcode?`<span class="tag tc">▮ ${h(m.barcode)}</span>`:''}
+            ${m.opened?`<span class="tag" style="background:rgba(245,166,35,.08);color:var(--warn);border:1px solid rgba(245,166,35,.18)">📂 ${h(m.opened)}</span>`:''}
             ${m.qty?`<span class="tag tq">${h(m.qty)}</span>`:''}
             <span class="mp ${st}">${label(m.mhd)}</span>
           </div>
@@ -1380,14 +1393,29 @@ const App=(()=>{
     document.getElementById('hdr-badge').textContent=`${t} Eintr${t===1?'ag':'äge'}`;
   }
 
+  var _bannerTimer = null;
   function updateBanner(){
     const ex=meds.filter(m=>['warn','danger','expired'].includes(status(m.mhd)));
     const b=document.getElementById('alert-banner');
     if(ex.length){
       b.innerHTML=`⚠️ ${ex.length} Medikament${ex.length===1?'':'e'}: Mindesthaltbarkeitsdatum demnächst abgelaufen — tippen`;
       b.style.display='block';
+      b.style.opacity='1';
       document.body.classList.add('has-alert');
+      // Nach 5 Sekunden ausblenden
+      clearTimeout(_bannerTimer);
+      _bannerTimer = setTimeout(function(){
+        b.style.transition='opacity .6s ease';
+        b.style.opacity='0';
+        setTimeout(function(){
+          b.style.display='none';
+          b.style.opacity='1';
+          b.style.transition='';
+          document.body.classList.remove('has-alert');
+        }, 650);
+      }, 5000);
     } else {
+      clearTimeout(_bannerTimer);
       b.style.display='none';
       document.body.classList.remove('has-alert');
     }
@@ -1453,20 +1481,45 @@ const App=(()=>{
     ['barcode','pzn','name','loc','mhd','qty','brand','notes'].forEach(f=>{
       const el=document.getElementById(`f-${f}`); if(el) el.value=m[f==='loc'?'location':f]||'';
     });
+    const openedEl=document.getElementById('f-opened');
+    if(openedEl) openedEl.value=m.opened||'';
+    updateOpenedHint();
     document.getElementById('lk-btn').style.display=m.barcode?'block':'none';
     document.getElementById('ov-add').classList.add('open');
   }
   function closeModal(){stopScan();document.getElementById('ov-add').classList.remove('open');clearForm();editId=null;}
   function ovClick(e){if(e.target===e.currentTarget)closeModal();}
   function clearForm(){
-    ['barcode','name','loc','mhd','qty','brand','pzn','notes'].forEach(f=>{
+    ['barcode','name','loc','mhd','opened','qty','brand','pzn','notes'].forEach(f=>{
       const el=document.getElementById(`f-${f}`); if(el) el.value='';
     });
+    const hint=document.getElementById('opened-hint');
+    if(hint) hint.style.display='none';
     hideSR();
     document.getElementById('lk-btn').style.display='none';
     document.getElementById('scan-prog').style.display='none';
     const ap=document.getElementById('ai-prog'); if(ap) ap.style.display='none';
     stopScan();
+  }
+
+  /* Geöffnet-Hinweis aktualisieren */
+  function updateOpenedHint(){
+    const openedVal = document.getElementById('f-opened')?.value;
+    const hint      = document.getElementById('opened-hint');
+    const hintText  = document.getElementById('opened-hint-text');
+    if(!hint||!hintText) return;
+    if(!openedVal){ hint.style.display='none'; return; }
+    const opened = new Date(openedVal);
+    const today  = new Date();
+    today.setHours(0,0,0,0);
+    const days   = Math.floor((today - opened) / 86400000);
+    if(days < 0){ hint.style.display='none'; return; }
+    let msg = `📅 Geöffnet vor ${days} Tag${days===1?'':'en'}.`;
+    if(days >= 84)       msg += ' ⚠️ Viele flüssige Medikamente sind nach 12 Wochen nicht mehr haltbar.';
+    else if(days >= 42)  msg += ' ⚠️ Augentropfen & Sirupe: Haltbarkeit nach Öffnen meist 4–6 Wochen.';
+    else if(days >= 28)  msg += ' ℹ️ Augentropfen sind nach dem Öffnen oft nur 4 Wochen haltbar.';
+    hintText.textContent = msg;
+    hint.style.display = 'block';
   }
 
   /* SAVE */
@@ -1482,6 +1535,7 @@ const App=(()=>{
       pzn:document.getElementById('f-pzn').value.trim(),
       location:document.getElementById('f-loc').value.trim(),
       mhd,
+      opened:document.getElementById('f-opened').value.trim()||null,
       qty:document.getElementById('f-qty').value.trim(),
       brand:document.getElementById('f-brand').value.trim(),
       notes:document.getElementById('f-notes').value.trim(),
@@ -2132,7 +2186,7 @@ iCloud Drive / MediSchrank / liegen.
 
   return {init,render,view,openAdd,openEdit,closeModal,ovClick,save,del,clearAll,
           startPhotoScan,runPhotoScan,startScan,runScan,toggleScan,onBcInput,lookup,handleCode,startOCR,runOCR,
-          saveApiKey,onApiKeyInput,copyShortcutScript,
+          saveApiKey,onApiKeyInput,copyShortcutScript,updateOpenedHint,
           toggleNotif,saveCfg,exportiCloud,exportJSON,importJSON,gotoExpiring,confResolve,confCancel};
 })();
 
@@ -2169,27 +2223,31 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
 <!-- ═══ NAV DRAG SLIDER ══════════════════════════════════ -->
 <script>
 (function() {
-  var TABS    = ['list', 'stats', 'settings'];
-  var TAB_IDS = ['nb-list', 'nb-stats', 'nb-settings'];
-  var ADD_ID  = 'nb-add';
+  // Alle 4 Buttons inkl. Add — für Snap-Positionen
+  var ALL_IDS  = ['nb-list', 'nb-stats', 'nb-add', 'nb-settings'];
+  var NAV_TABS = ['list',    'stats',    'add',    'settings'];
+  var TABS     = ['list', 'stats', 'settings']; // nur navigierbare
+  var TAB_IDS  = ['nb-list', 'nb-stats', 'nb-settings'];
+  var ADD_IDX  = 2; // Position des Add-Buttons in ALL_IDS
 
   var dragging = false, startX = 0, startLeft = 0, currentIdx = 0;
-  var nav, thumb, navRect, tabRects;
+  var nav, thumb, navRect, allRects;
 
   function getRects() {
     nav   = document.getElementById('main-nav');
     thumb = document.getElementById('nav-thumb');
     if (!nav || !thumb) return false;
     navRect  = nav.getBoundingClientRect();
-    tabRects = TAB_IDS.map(function(id) {
+    allRects = ALL_IDS.map(function(id) {
       return document.getElementById(id).getBoundingClientRect();
     });
     return navRect.width > 0;
   }
 
-  function moveThumbTo(idx, animate) {
+  // Bewegt Thumb zum Button mit Index i in ALL_IDS
+  function moveThumbTo(allIdx, animate) {
     if (!getRects()) return;
-    var r = tabRects[idx];
+    var r = allRects[allIdx];
     thumb.style.transition = animate
       ? 'left .25s cubic-bezier(.34,1.2,.64,1), width .22s cubic-bezier(.34,1.2,.64,1)'
       : 'none';
@@ -2197,17 +2255,18 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
     thumb.style.width = r.width + 'px';
   }
 
-  function setActive(idx) {
-    currentIdx = idx;
+  function setActive(tabName) {
+    // Nur für navigierbare Tabs die active-Klasse setzen
     TAB_IDS.forEach(function(id, i) {
       var b = document.getElementById(id);
-      if (b) b.classList.toggle('active', i === idx);
+      if (b) b.classList.toggle('active', TABS[i] === tabName);
     });
   }
 
+  // Gibt Index in ALL_IDS zurück der am nächsten zu clientX liegt
   function snapToNearest(clientX) {
-    var best = currentIdx, bestDist = Infinity;
-    tabRects.forEach(function(r, i) {
+    var best = 0, bestDist = Infinity;
+    allRects.forEach(function(r, i) {
       var dist = Math.abs(clientX - (r.left + r.width / 2));
       if (dist < bestDist) { bestDist = dist; best = i; }
     });
@@ -2220,17 +2279,13 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
     if (!nav || !thumb || nav._dragInit) return;
     nav._dragInit = true;
 
-    // Initial positionieren
-    requestAnimationFrame(function() {
-      moveThumbTo(currentIdx, false);
-    });
+    // Initial: Liste ist aktiv (allIdx=0)
+    requestAnimationFrame(function() { moveThumbTo(0, false); });
 
     nav.addEventListener('touchstart', function(e) {
-      var target = e.target.closest('.nb');
-      if (!target || target.id === ADD_ID) return;
       if (!getRects()) return;
       startX    = e.touches[0].clientX;
-      startLeft = parseFloat(thumb.style.left) || (tabRects[0].left - navRect.left);
+      startLeft = parseFloat(thumb.style.left) || (allRects[0].left - navRect.left);
       dragging  = true;
       thumb.style.transition = 'none';
     }, { passive: true });
@@ -2239,8 +2294,8 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
       if (!dragging) return;
       var dx      = e.touches[0].clientX - startX;
       var newLeft = startLeft + dx;
-      var minL    = tabRects[0].left - navRect.left;
-      var maxL    = tabRects[tabRects.length - 1].left - navRect.left;
+      var minL    = allRects[0].left - navRect.left;
+      var maxL    = allRects[allRects.length - 1].left - navRect.left;
       thumb.style.left = Math.max(minL, Math.min(maxL, newLeft)) + 'px';
       e.preventDefault();
     }, { passive: false });
@@ -2248,21 +2303,39 @@ document.addEventListener('DOMContentLoaded', () => Auth.init());
     nav.addEventListener('touchend', function(e) {
       if (!dragging) return;
       dragging = false;
-      var idx = snapToNearest(e.changedTouches[0].clientX);
-      moveThumbTo(idx, true);
-      setActive(idx);
-      App.view(TABS[idx]);
+      var allIdx = snapToNearest(e.changedTouches[0].clientX);
+      moveThumbTo(allIdx, true);
+
+      if (allIdx === ADD_IDX) {
+        // Add-Button: Modal öffnen, kein View-Wechsel
+        // Thumb springt nach touchend zurück zum aktuellen View
+        setTimeout(function() {
+          // Finde aktuellen Tab-Index in ALL_IDS
+          var curAllIdx = NAV_TABS.indexOf(TABS[currentIdx]);
+          if (curAllIdx < 0) curAllIdx = 0;
+          moveThumbTo(curAllIdx, true);
+        }, 300);
+        App.openAdd();
+      } else {
+        // Nav-Tab: allIdx → TABS-Index (überspringe Add)
+        var tabIdx = allIdx > ADD_IDX ? allIdx - 1 : allIdx;
+        currentIdx = tabIdx;
+        setActive(TABS[tabIdx]);
+        App.view(TABS[tabIdx]);
+      }
     }, { passive: true });
   }
 
   window.NavSlider = {
     init: init,
     moveToTab: function(v) {
-      var idx = TABS.indexOf(v);
-      if (idx < 0) return;
-      currentIdx = idx;
-      setActive(idx);
-      requestAnimationFrame(function() { moveThumbTo(idx, true); });
+      var tabIdx = TABS.indexOf(v);
+      if (tabIdx < 0) return;
+      currentIdx = tabIdx;
+      setActive(v);
+      // allIdx: überspringe Add-Button
+      var allIdx = tabIdx >= ADD_IDX ? tabIdx + 1 : tabIdx;
+      requestAnimationFrame(function() { moveThumbTo(allIdx, true); });
     }
   };
 
