@@ -569,7 +569,7 @@
     input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.45); }
     select option { background: var(--bg2); }
 
-    .r2 { display: flex; gap: 8px; }
+    .r2 { display: flex; gap: 12px; }
     .r2 > * { flex: 1; }
 
     /* ── Buttons ───────────────────────────────────────── */
@@ -1139,14 +1139,14 @@
    </div>
 
    <!-- MHD + Geöffnet am -->
-   <div class="r2" style="align-items:stretch">
-    <div class="fg" style="margin-bottom:0;display:flex;flex-direction:column">
+   <div class="r2" style="margin-bottom:12px">
+    <div class="fg" style="margin-bottom:0">
      <label>MHD (MM/JJJJ) *</label>
-     <input type="month" id="f-mhd" style="flex:1" />
+     <input type="month" id="f-mhd" />
     </div>
-    <div class="fg" style="margin-bottom:0;display:flex;flex-direction:column">
+    <div class="fg" style="margin-bottom:0">
      <label>Geöffnet am</label>
-     <input type="date" id="f-opened" onchange="App.updateOpenedHint()" style="flex:1" />
+     <input type="date" id="f-opened" onchange="App.updateOpenedHint()" />
     </div>
    </div>
    <div class="fg" id="opened-hint" style="display:none;margin-top:6px">
@@ -1593,9 +1593,16 @@ const App=(()=>{
   /* SAVE */
   async function save(){
     const name=document.getElementById('f-name').value.trim();
-    const mhd=document.getElementById('f-mhd').value.trim();
+    const mhdRaw=document.getElementById('f-mhd').value.trim();
     if(!name){toast('Bitte Namen eingeben','err');document.getElementById('f-name').focus();return;}
-    if(!mhd) {toast('Bitte MHD eingeben','err');document.getElementById('f-mhd').focus();return;}
+    if(!mhdRaw){toast('Bitte MHD eingeben','err');document.getElementById('f-mhd').focus();return;}
+    // YYYY-MM → YYYY-MM-DD (letzter Tag des Monats) für Kurzbefehl-Kompatibilität
+    let mhd = mhdRaw;
+    if(/^\d{4}-\d{2}$/.test(mhdRaw)){
+      const [y,m] = mhdRaw.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate(); // Tag 0 = letzter Tag Vormonat
+      mhd = mhdRaw + '-' + String(lastDay).padStart(2,'0');
+    }
     const now=Date.now();
     const entry={
       id:editId||String(now), name,
