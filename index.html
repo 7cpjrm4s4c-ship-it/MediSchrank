@@ -1152,16 +1152,14 @@
     <input type="hidden" id="f-loc" />
    </div>
 
-   <!-- MHD + Geöffnet am -->
-   <div style="display:flex;gap:12px;margin-bottom:12px">
-    <div class="fg" style="margin-bottom:0;flex:0 0 calc(50% - 6px);max-width:calc(50% - 6px)">
-     <label>MHD (MM/JJJJ) *</label>
-     <input type="month" id="f-mhd" />
-    </div>
-    <div class="fg" style="margin-bottom:0;flex:0 0 calc(50% - 6px);max-width:calc(50% - 6px)">
-     <label>Geöffnet am</label>
-     <input type="date" id="f-opened" onchange="App.updateOpenedHint()" />
-    </div>
+   <!-- Verwendbar bis + Geöffnet am — übereinander, volle Breite -->
+   <div class="fg">
+    <label>Verwendbar bis (MM/JJJJ) *</label>
+    <input type="month" id="f-mhd" />
+   </div>
+   <div class="fg">
+    <label>Geöffnet am</label>
+    <input type="date" id="f-opened" onchange="App.updateOpenedHint()" />
    </div>
    <div class="fg" id="opened-hint" style="display:none;margin-top:6px">
     <span style="font-size:.65rem;color:var(--warn);line-height:1.5" id="opened-hint-text"></span>
