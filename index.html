@@ -504,7 +504,7 @@
       border-radius: var(--glass-radius);
       box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 1px 0 var(--glass-border-t) inset;
       overflow-y: auto;
-      overflow-x: hidden;
+      overflow-x: visible;
       -webkit-overflow-scrolling: touch;
       animation: sup .3s cubic-bezier(.34,1.2,.64,1);
     }
@@ -516,7 +516,7 @@
     .mttl { font-family: var(--fh); font-size: 1rem; font-weight: 700; }
     .mcls { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--rs); cursor: pointer; padding: 5px 10px; color: var(--text2); font-size: 13px; transition: color .13s, background .13s; }
     .mcls:hover { color: var(--text); background: var(--surf2); }
-    .mb { padding: 0 18px 22px; }
+    .mb { padding: 0 18px 22px; box-sizing: border-box; width: 100%; }
 
     /* ── Form ──────────────────────────────────────────── */
     .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
