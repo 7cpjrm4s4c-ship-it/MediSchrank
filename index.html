@@ -248,7 +248,7 @@
     .stat-v.w { color: var(--warn); } .stat-v.d { color: var(--danger); }
 
     /* ── Section ───────────────────────────────────────── */
-    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; margin-top: 18px; }
+    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; margin-top: 16px; }
     .sec-ttl { font-family: var(--fh); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text3); }
 
     /* ── Search ────────────────────────────────────────── */
@@ -265,9 +265,8 @@
       backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid var(--glass-border);
       border-radius: var(--glass-radius-sm);
-      height: 44px;
-      padding: 0 14px 0 36px;
-      line-height: 44px;
+      padding: 11px 14px 11px 36px;
+      line-height: 1.25;
       font-family: var(--fm); font-size: 1rem;
       color: var(--text); outline: none;
       box-shadow: var(--glass-shadow-sm);
@@ -490,13 +489,12 @@
     .ov.open { display: block; } /* nur modal child relevant */
     .modal {
       position: fixed;
-      left: 0; right: 0;
-      /* Beginnt oberhalb der Nav + 16px Luft */
-      bottom: calc(max(env(safe-area-inset-bottom,0px),8px) + 72px + 16px);
-      /* Reicht bis 16px unter Statusbar */
-      top: calc(env(safe-area-inset-top,0px) + 16px);
-      max-width: 680px;
+      left: 16px; right: 16px;
+      max-width: calc(680px - 32px);
       margin: 0 auto;
+      /* Gleiche Breite/Position wie Nav-Pill */
+      bottom: calc(max(env(safe-area-inset-bottom,0px),8px) + 72px + 16px);
+      top: calc(env(safe-area-inset-top,0px) + 16px);
       z-index: 400;
 
       background: var(--hdr-bg);
@@ -543,16 +541,15 @@
     }
     /* Einheitliches Padding + Cursor-Fix: display:flex auf Wrapper statt padding-Trick */
     input[type="text"], input[type="number"], input[type="time"] {
-      padding: 0 12px;
-      height: 44px;
-      line-height: 44px;
+      padding: 11px 12px;
+      height: auto;
+      line-height: 1.25;
       -webkit-appearance: none; appearance: none;
     }
     input[type="date"], input[type="month"] {
-      padding: 0 12px;
-      height: 44px;
-      line-height: 44px;
-      /* Kein -webkit-appearance:none bei date/month — iOS braucht das für Picker */
+      padding: 11px 12px;
+      height: auto;
+      line-height: 1.25;
     }
     textarea {
       padding: 11px 12px;
