@@ -492,7 +492,6 @@
       left: 16px; right: 16px;
       max-width: calc(680px - 32px);
       margin: 0 auto;
-      /* Gleiche Breite/Position wie Nav-Pill */
       bottom: calc(max(env(safe-area-inset-bottom,0px),8px) + 72px + 16px);
       top: calc(env(safe-area-inset-top,0px) + 16px);
       z-index: 400;
@@ -503,20 +502,29 @@
       border-top-color: var(--glass-border-t);
       border-radius: var(--glass-radius);
       box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 1px 0 var(--glass-border-t) inset;
-      overflow-y: auto;
-      overflow-x: visible;
-      -webkit-overflow-scrolling: touch;
+      /* overflow:hidden auf Modal — Scroll auf .mb innen */
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
       animation: sup .3s cubic-bezier(.34,1.2,.64,1);
     }
     /* Kein pointer-events auf Overlay — Content dahinter bleibt bedienbar */
     .ov { pointer-events: none; }
     .ov.open .modal { pointer-events: auto; }
     @keyframes sup { from{transform:translateY(50px);opacity:0} to{transform:translateY(0);opacity:1} }
-    .mhdr { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 0; margin-bottom: 14px; }
+    .mhdr { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 0; margin-bottom: 14px; flex-shrink: 0; }
     .mttl { font-family: var(--fh); font-size: 1rem; font-weight: 700; }
     .mcls { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--rs); cursor: pointer; padding: 5px 10px; color: var(--text2); font-size: 13px; transition: color .13s, background .13s; }
     .mcls:hover { color: var(--text); background: var(--surf2); }
-    .mb { padding: 0 18px 22px; box-sizing: border-box; width: 100%; }
+    .mb {
+      padding: 0 18px 22px;
+      box-sizing: border-box;
+      width: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+    }
 
     /* ── Form ──────────────────────────────────────────── */
     .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
@@ -1133,6 +1141,25 @@
     <input type="text" id="f-name" placeholder="z.B. Ibuprofen 400mg" />
    </div>
 
+   <!-- Kategorie -->
+   <div class="fg">
+    <label>Kategorie</label>
+    <select id="f-cat">
+     <option value="">– Keine Kategorie –</option>
+     <option value="Schmerzmittel">Schmerzmittel</option>
+     <option value="Antibiotikum">Antibiotikum</option>
+     <option value="Blutdruck">Blutdruck</option>
+     <option value="Herz / Kreislauf">Herz / Kreislauf</option>
+     <option value="Magen / Darm">Magen / Darm</option>
+     <option value="Allergie / Antihistaminikum">Allergie / Antihistaminikum</option>
+     <option value="Erkältung / Husten">Erkältung / Husten</option>
+     <option value="Vitamine / Nahrungsergänzung">Vitamine / Nahrungsergänzung</option>
+     <option value="Augen / Ohren">Augen / Ohren</option>
+     <option value="Haut / Wunden">Haut / Wunden</option>
+     <option value="Sonstiges">Sonstiges</option>
+    </select>
+   </div>
+
    <!-- Lagerort — Bottom Sheet Picker -->
    <div class="fg">
     <label>Lagerort / Fach</label>
@@ -1431,6 +1458,7 @@ const App=(()=>{
         <div>
           <div class="mc-name">${h(m.name)}${m.brand?`<small>${h(m.brand)}</small>`:''}</div>
           <div class="mc-meta">
+            ${m.category?`<span class="tag" style="background:rgba(94,184,245,.08);color:var(--acc2);border:1px solid rgba(67,198,172,.18);">${h(m.category)}</span>`:''}
             ${m.location?`<span class="tag tl">📍 ${h(m.location)}</span>`:''}
             ${m.opened?`<span class="tag" style="background:rgba(245,166,35,.08);color:var(--warn);border:1px solid rgba(245,166,35,.18)">📂 ${h(m.opened)}</span>`:''}
             ${m.qty?`<span class="tag tq">${h(m.qty)}</span>`:''}
@@ -1557,6 +1585,8 @@ const App=(()=>{
     const openedEl=document.getElementById('f-opened');
     if(openedEl) openedEl.value=m.opened||'';
     updateOpenedHint();
+    const catEl=document.getElementById('f-cat');
+    if(catEl) catEl.value=m.category||'';
     document.getElementById('lk-btn').style.display=m.barcode?'block':'none';
     document.getElementById('ov-add').classList.add('open');
     if(typeof NavSlider!=='undefined') NavSlider.showAdd();
@@ -1570,7 +1600,7 @@ const App=(()=>{
   }
   function ovClick(e){if(e.target===e.currentTarget)closeModal();}
   function clearForm(){
-    ['barcode','name','loc','mhd','opened','qty','brand','pzn','notes'].forEach(f=>{
+    ['barcode','name','loc','mhd','opened','qty','brand','pzn','notes','cat'].forEach(f=>{
       const el=document.getElementById(`f-${f}`); if(el) el.value='';
     });
     const hint=document.getElementById('opened-hint');
@@ -1621,6 +1651,7 @@ const App=(()=>{
       barcode:document.getElementById('f-barcode').value.trim(),
       pzn:document.getElementById('f-pzn').value.trim(),
       location:document.getElementById('f-loc').value.trim(),
+      category:document.getElementById('f-cat')?.value||'',
       mhd,
       opened:document.getElementById('f-opened').value.trim()||null,
       qty:document.getElementById('f-qty').value.trim(),
