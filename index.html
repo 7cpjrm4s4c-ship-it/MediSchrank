@@ -520,6 +520,7 @@
       padding: 0 18px 22px;
       box-sizing: border-box;
       width: 100%;
+      min-width: 0; /* verhindert flex overflow */
       overflow-y: auto;
       overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
@@ -527,7 +528,7 @@
     }
 
     /* ── Form ──────────────────────────────────────────── */
-    .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; overflow: hidden; }
+    .fg { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; width: 100%; min-width: 0; overflow: hidden; box-sizing: border-box; }
     label { font-size: .63rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); }
 
     /* ALLE Inputs 16px = 1rem → Safari zoomt nie! */
@@ -556,7 +557,8 @@
     }
     input[type="date"], input[type="month"] {
       line-height: 1.25;
-      /* type=date/month: appearance none entfernen damit iOS Picker funktioniert */
+      width: 100% !important;
+      max-width: 100% !important;
       -webkit-appearance: auto; appearance: auto;
     }
     /* Picker-Icon klein halten */
