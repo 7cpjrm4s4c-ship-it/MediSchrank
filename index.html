@@ -265,9 +265,10 @@
       backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid var(--glass-border);
       border-radius: var(--glass-radius-sm);
-      padding: 11px 14px 11px 36px;
+      height: 44px;
+      padding: 0 14px 0 36px;
+      line-height: 44px;
       font-family: var(--fm); font-size: 1rem;
-      line-height: normal;
       color: var(--text); outline: none;
       box-shadow: var(--glass-shadow-sm);
       transition: border-color .2s, box-shadow .2s, background .2s;
@@ -484,22 +485,34 @@
 
 
 
-    /* ── Modal ─────────────────────────────────────────── */
-    .ov { display: none; position: fixed; inset: 0; background: var(--scan-overlay); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 500; align-items: flex-end; justify-content: center; padding-bottom: calc(max(env(safe-area-inset-bottom,0px),8px) + 72px + 16px); }
-    .ov.open { display: flex; }
+    /* ── Modal — festes Panel über Nav, kein Overlay ───── */
+    .ov { display: none; } /* Overlay-Hintergrund deaktiviert */
+    .ov.open { display: block; } /* nur modal child relevant */
     .modal {
-      background: var(--glass-bg);
+      position: fixed;
+      left: 0; right: 0;
+      /* Beginnt oberhalb der Nav + 16px Luft */
+      bottom: calc(max(env(safe-area-inset-bottom,0px),8px) + 72px + 16px);
+      /* Reicht bis 16px unter Statusbar */
+      top: calc(env(safe-area-inset-top,0px) + 16px);
+      max-width: 680px;
+      margin: 0 auto;
+      z-index: 400;
+
+      background: var(--hdr-bg);
       backdrop-filter: blur(40px) saturate(1.8); -webkit-backdrop-filter: blur(40px) saturate(1.8);
       border: 1px solid var(--glass-border);
       border-top-color: var(--glass-border-t);
-      border-radius: var(--glass-radius) var(--glass-radius) 0 0;
-      box-shadow: 0 -8px 40px rgba(0,0,0,.5), 0 1px 0 var(--glass-border-t) inset;
-      width: 100%; max-width: 680px;
-      /* 16px vom oberen Rand, endet 16px über der Nav */
-      max-height: calc(100dvh - 16px - max(env(safe-area-inset-bottom,0px),8px) - 72px - 16px);
+      border-radius: var(--glass-radius);
+      box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 1px 0 var(--glass-border-t) inset;
       overflow-y: auto;
-      animation: sup .28s cubic-bezier(.34,1.56,.64,1);
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      animation: sup .3s cubic-bezier(.34,1.2,.64,1);
     }
+    /* Kein pointer-events auf Overlay — Content dahinter bleibt bedienbar */
+    .ov { pointer-events: none; }
+    .ov.open .modal { pointer-events: auto; }
     @keyframes sup { from{transform:translateY(50px);opacity:0} to{transform:translateY(0);opacity:1} }
     .mhdr { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 0; margin-bottom: 14px; }
     .mttl { font-family: var(--fh); font-size: 1rem; font-weight: 700; }
@@ -514,6 +527,7 @@
     /* ALLE Inputs 16px = 1rem → Safari zoomt nie! */
     input[type="text"],
     input[type="date"],
+    input[type="month"],
     input[type="number"],
     input[type="time"],
     select, textarea {
@@ -522,14 +536,34 @@
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--glass-border);
       border-radius: var(--glass-radius-sm);
-      padding: 11px 12px;
       font-family: var(--fm); font-size: 1rem; /* 16px – critical */
       color: var(--text); outline: none;
       box-shadow: 0 2px 8px rgba(0,0,0,.2), 0 1px 0 var(--glass-shine) inset;
       transition: border-color .2s, box-shadow .2s, background .2s;
+    }
+    /* Einheitliches Padding + Cursor-Fix: display:flex auf Wrapper statt padding-Trick */
+    input[type="text"], input[type="number"], input[type="time"] {
+      padding: 0 12px;
+      height: 44px;
+      line-height: 44px;
       -webkit-appearance: none; appearance: none;
     }
-    input:focus, select:focus, textarea:focus {
+    input[type="date"], input[type="month"] {
+      padding: 0 12px;
+      height: 44px;
+      line-height: 44px;
+      /* Kein -webkit-appearance:none bei date/month — iOS braucht das für Picker */
+    }
+    textarea {
+      padding: 11px 12px;
+      -webkit-appearance: none; appearance: none;
+    }
+    select {
+      padding: 0 12px;
+      height: 44px;
+      -webkit-appearance: none; appearance: none;
+    }
+    input:focus, input[type="month"]:focus, select:focus, textarea:focus {
       border-color: var(--acc);
       background: var(--glass-bg-hover);
       box-shadow: 0 2px 8px rgba(0,0,0,.2), 0 0 0 3px rgba(94,184,245,.15), 0 1px 0 var(--glass-shine) inset;
@@ -1503,14 +1537,20 @@ const App=(()=>{
   function openEdit(id){
     editId=id;const m=meds.find(x=>x.id===id);if(!m)return;
     document.getElementById('mttl').textContent='✏️ Medikament bearbeiten';
-    ['barcode','pzn','name','loc','mhd','qty','brand','notes'].forEach(f=>{
+    ['barcode','pzn','name','loc','qty','brand','notes'].forEach(f=>{
       const el=document.getElementById(`f-${f}`); if(el) el.value=m[f==='loc'?'location':f]||'';
     });
+    // MHD: ggf. YYYY-MM-DD → YYYY-MM kürzen für type=month
+    const mhdEl=document.getElementById('f-mhd');
+    if(mhdEl && m.mhd) {
+      mhdEl.value = m.mhd.length>7 ? m.mhd.substring(0,7) : m.mhd;
+    }
     const openedEl=document.getElementById('f-opened');
     if(openedEl) openedEl.value=m.opened||'';
     updateOpenedHint();
     document.getElementById('lk-btn').style.display=m.barcode?'block':'none';
     document.getElementById('ov-add').classList.add('open');
+    if(typeof NavSlider!=='undefined') NavSlider.showAdd();
   }
   function closeModal(){
     stopScan();
