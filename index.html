@@ -856,41 +856,39 @@ var __Html5QrcodeLibrary__;(()=>{var t={449:function(t,e,r){!function(t){"use st
     /* Blur content while locked */
     #app.locked > *:not(#lock-screen) { filter: blur(8px); pointer-events: none; user-select: none; }
 
-    /* ── Sort Pill ─────────────────────────────────────────── */
-    .sort-pill {
+    /* ── Sort Select ────────────────────────────────────────── */
+    .sort-wrap {
+      position: relative;
       display: flex;
       align-items: center;
+    }
+    .sort-wrap::after {
+      content: '⌄';
+      position: absolute;
+      right: 10px;
+      top: 50%; transform: translateY(-52%);
+      font-size: .75rem;
+      color: var(--text3);
+      pointer-events: none;
+      line-height: 1;
+    }
+    #sort-select {
+      appearance: none; -webkit-appearance: none;
       background: var(--glass-bg);
       backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border);
       border-radius: 999px;
-      padding: 2px;
-      gap: 0;
-      position: relative;
+      padding: 6px 28px 6px 13px;
+      font-family: var(--fm); font-size: .63rem;
+      letter-spacing: .04em;
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+      box-shadow: var(--glass-shadow-sm);
+      min-width: 0;
     }
-    .sort-thumb {
-      position: absolute;
-      top: 2px; bottom: 2px; left: 2px;
-      border-radius: 999px;
-      background: var(--glass-bg-hover);
-      border: 1px solid var(--glass-border-t);
-      box-shadow: 0 1px 6px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.12) inset;
-      pointer-events: none;
-      transition: left .2s cubic-bezier(.34,1.2,.64,1), width .2s cubic-bezier(.34,1.2,.64,1);
-      z-index: 0;
-    }
-    .sort-btn {
-      position: relative; z-index: 1;
-      background: none; border: none; cursor: pointer;
-      padding: 5px 10px;
-      font-family: var(--fm); font-size: .58rem;
-      letter-spacing: .04em; text-transform: uppercase;
-      color: var(--text3); border-radius: 999px;
-      transition: color .15s;
-      white-space: nowrap;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .sort-btn.active { color: var(--text); }
+    #sort-select:focus { border-color: var(--acc); }
+    #sort-select option { background: var(--bg2); color: var(--text); }
   </style>
 </head>
 <body>
@@ -936,11 +934,12 @@ var __Html5QrcodeLibrary__;(()=>{var t={449:function(t,e,r){!function(t){"use st
       <div>
         <div class="sec-hdr">
           <span class="sec-ttl">Medikamente</span>
-          <div class="sort-pill" id="sort-pill">
-            <div class="sort-thumb" id="sort-thumb"></div>
-            <button class="sort-btn active" id="sbtn-mhd"    onclick="App.setSort('mhd')">MHD</button>
-            <button class="sort-btn"        id="sbtn-name"   onclick="App.setSort('name')">Name</button>
-            <button class="sort-btn"        id="sbtn-cat"    onclick="App.setSort('cat')">Kategorie</button>
+          <div class="sort-wrap">
+            <select id="sort-select" onchange="App.setSort(this.value)">
+              <option value="mhd">MHD</option>
+              <option value="name">Name</option>
+              <option value="cat">Kategorie</option>
+            </select>
           </div>
         </div>
         <div class="sw"><span class="si">🔍</span><input type="text" id="search" placeholder="Name, Ort oder Barcode…" oninput="App.render()" /></div>
@@ -1517,25 +1516,14 @@ const App=(()=>{
   function setSort(mode) {
     currentSort = mode;
     localStorage.setItem('ms_sort', mode);
-    // Buttons
-    ['mhd','name','cat'].forEach(m => {
-      document.getElementById('sbtn-' + m)?.classList.toggle('active', m === mode);
-    });
-    // Thumb
-    const pill  = document.getElementById('sort-pill');
-    const thumb = document.getElementById('sort-thumb');
-    const btn   = document.getElementById('sbtn-' + mode);
-    if (pill && thumb && btn) {
-      const pr = pill.getBoundingClientRect();
-      const br = btn.getBoundingClientRect();
-      thumb.style.left  = (br.left - pr.left) + 'px';
-      thumb.style.width = br.width + 'px';
-    }
+    const sel = document.getElementById('sort-select');
+    if (sel) sel.value = mode;
     render();
   }
 
   function initSortThumb() {
-    requestAnimationFrame(() => setSort(currentSort));
+    const sel = document.getElementById('sort-select');
+    if (sel) sel.value = currentSort;
   }
 
   function render(){
@@ -2409,7 +2397,7 @@ iCloud Drive / MediSchrank / liegen.
   return {init,render,view,openAdd,openEdit,closeModal,ovClick,save,del,clearAll,
           startPhotoScan,runPhotoScan,startScan,runScan,toggleScan,onBcInput,lookup,handleCode,startOCR,runOCR,
           saveApiKey,onApiKeyInput,copyShortcutScript,updateOpenedHint,
-          toggleNotif,saveCfg,exportiCloud,exportJSON,importJSON,gotoExpiring,confResolve,confCancel};
+          toggleNotif,saveCfg,exportiCloud,exportJSON,importJSON,gotoExpiring,confResolve,confCancel,setSort};
 })();
 
 document.addEventListener('DOMContentLoaded', () => Auth.init());
