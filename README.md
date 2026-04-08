@@ -7,11 +7,11 @@ Läuft vollständig offline auf iPhone, iPad und Mac (Safari).
 
 ## Features
 
+- **Verpackung fotografieren** – KI (Claude API) liest Name, PZN, MHD und Menge automatisch aus
 - **Barcode-Scanner** – Foto der Verpackung → EAN wird automatisch erkannt (html5-qrcode / ZXing)
 - **OpenFoodFacts-Lookup** – Produktname, Hersteller und Menge werden automatisch befüllt
-- **OCR für MHD** – Foto des Ablaufdatums → Datum wird automatisch erkannt (Tesseract.js)
-- **MHD-Überwachung** – farbliche Ampel + Push-Benachrichtigung vor Ablauf (konfigurierbarer Vorlauf)
-- **Offline-First** – IndexedDB + Service Worker, funktioniert ohne Internet
+- **MHD-Überwachung** – farbliche Ampel + iOS Shortcuts Workaround für Benachrichtigungen
+- **Offline-First** – IndexedDB, funktioniert ohne Internet
 - **iCloud Drive Sync** – Export per iOS Share Sheet → „In Dateien sichern" → iCloud Drive
 - **Biometrie-Sperre** – Face ID / Touch ID via WebAuthn (optional)
 - **Dark / Light Mode** – manuell oder automatisch nach Systemeinstellung
@@ -25,14 +25,8 @@ Läuft vollständig offline auf iPhone, iPad und Mac (Safari).
 
 ```
 /
-├── index.html        ← App (alles in einer Datei)
+├── index.html        ← App (alles in einer Datei, html5-qrcode inline)
 ├── manifest.json     ← PWA Manifest
-├── icons/
-│   ├── icon-120.png
-│   ├── icon-152.png
-│   ├── icon-180.png
-│   ├── icon-192.png
-│   └── icon-512.png
 └── README.md
 ```
 
@@ -53,9 +47,9 @@ Läuft vollständig offline auf iPhone, iPad und Mac (Safari).
 |---|---|
 | Framework | Vanilla JS (kein Build-Tool nötig) |
 | Speicher | IndexedDB (Medikamente) + localStorage (Settings) |
-| Barcode | html5-qrcode 2.3.8 + ZXing UMD |
-| OCR | Tesseract.js 5.0.4 |
-| Offline | Service Worker (Cache-First für Shell, Network-First für APIs) |
+| Barcode | html5-qrcode 2.3.8 (inline) |
+| KI-Analyse | Claude API (Verpackungsfoto → alle Felder) |
+| Offline | Service Worker deaktiviert – IndexedDB übernimmt Persistenz |
 | Auth | WebAuthn / Passkey (platform authenticator) |
 | Produktdaten | OpenFoodFacts API (kostenlos, kein API-Key) |
 
@@ -64,7 +58,7 @@ Läuft vollständig offline auf iPhone, iPad und Mac (Safari).
 ## iOS / Safari Besonderheiten
 
 - **Kein `BarcodeDetector`** auf iOS → Foto-basierter Scan via `input[capture=environment]`
-- **Kein Background Push** → Benachrichtigungen nur wenn App offen oder vom Home Screen
+- **Kein Background Push** → iOS Shortcuts Workaround (Setup-Anleitung in der App unter Einstellungen)
 - **WebAuthn** erst ab iOS 16 + muss als Home Screen App installiert sein
 - **IndexedDB** wird bei „Website-Daten löschen" geleert → regelmäßig exportieren!
 
@@ -72,6 +66,6 @@ Läuft vollständig offline auf iPhone, iPad und Mac (Safari).
 
 ## Datenschutz
 
-- Keine Daten verlassen das Gerät (außer OpenFoodFacts-Lookup per Barcode)
+- Keine Daten verlassen das Gerät (außer OpenFoodFacts-Lookup per Barcode und Claude API bei Foto-Analyse)
+- Claude API Key wird nur lokal im localStorage gespeichert, nie übertragen
 - Kein Account, kein Server, kein Tracking
-- Alle Daten lokal in der IndexedDB des Browsers
